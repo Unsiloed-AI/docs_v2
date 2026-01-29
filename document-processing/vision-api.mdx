@@ -52,7 +52,122 @@ All extraction schemas must follow the JSON Schema specification with the follow
 
 This ensures predictable responses and easy downstream validation.
 
-## Example 1: Invoice Extraction
+## Building Schemas
+
+### Primitive Types
+
+For simple fields like strings, numbers, and booleans, you must use the format `type: "string"` (not just `"string"`). These are the building blocks of your schema.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "invoice_number": {
+      "type": "string",
+      "description": "Invoice number"
+    },
+    "total_amount": {
+      "type": "number",
+      "description": "Total amount in USD"
+    },
+    "quantity": {
+      "type": "integer",
+      "description": "Number of items"
+    },
+    "is_paid": {
+      "type": "boolean",
+      "description": "Payment status"
+    }
+  },
+  "required": ["invoice_number", "total_amount","quantity", "is_paid"],
+  "additionalProperties": false
+}
+```
+
+### Arrays of Objects
+
+Use arrays when you have repeating data like line items, transactions, or people.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "line_items": {
+      "type": "array",
+      "description": "Invoice line items",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Item description"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Quantity"
+          },
+          "price": {
+            "type": "number",
+            "description": "Unit price"
+          }
+        },
+        "required": ["description", "quantity", "price"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+### Nested Arrays
+
+You can nest arrays inside objects within arrays for complex hierarchical data.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "orders": {
+      "type": "array",
+      "description": "Customer orders",
+      "items": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "description": "Order ID"
+          },
+          "shipments": {
+            "type": "array",
+            "description": "Shipments for this order",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tracking_number": {
+                  "type": "string",
+                  "description": "Tracking number"
+                },
+                "carrier": {
+                  "type": "string",
+                  "description": "Shipping carrier"
+                }
+              },
+              "required": ["tracking_number", "carrier"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["order_id", "shipments"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+<Accordion title="Example 1: Invoice Extraction">
 
 A common schema for extracting data from US invoices.
 
@@ -157,7 +272,9 @@ A common schema for extracting data from US invoices.
 }
 ```
 
-## Example 2: Public Company Filing (10-K / Annual Report)
+</Accordion>
+
+<Accordion title="Example 2: Public Company Filing (10-K / Annual Report)">
 
 A schema for extracting governance and ownership information from US SEC filings.
 
@@ -204,6 +321,8 @@ A schema for extracting governance and ownership information from US SEC filings
   "additionalProperties": false
 }
 ```
+
+</Accordion>
 
 ## How Extraction Works
 

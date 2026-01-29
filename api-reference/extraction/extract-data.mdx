@@ -22,6 +22,27 @@ The Extract Data endpoint processes PDF documents and extracts structured inform
   JSON schema defining the structure and fields to extract from the document. Must be a valid JSON Schema format with type definitions, properties, and required fields.
 </ParamField>
 
+<ParamField body="citation_config" type="string">
+  JSON object controlling citation detail level. Configure what citation references are returned with extracted data.
+
+  **Properties:**
+  - `semantic_citations` (boolean): Enable segment-level citations. Default: `false`
+  - `ocr_citations` (boolean): Enable word-level citations with OCR coordinates. Default: `false`
+
+  **Example:**
+  ```json
+  {
+    "semantic_citations": true,
+    "ocr_citations": true
+  }
+  ```
+
+  **When to use:**
+  - Set both to `true` for segment-level and word-level citations
+  - Set `semantic_citations: true, ocr_citations: false` for segment-level citations only
+  - Set both to `false` (default) when citations aren't needed
+</ParamField>
+
 ## Response
 
 <ResponseField name="job_id" type="string">
@@ -57,15 +78,15 @@ Once the job is completed, the results will contain the extracted data with addi
 </ResponseField>
 
 <ResponseField name="[field_name].bboxes" type="array">
-  Array of bounding box coordinates where the data was found in the document
+  Array of bounding box coordinates where the data was found in the document. Only included when `semantic_citations` or `ocr_citations` is enabled in citation_config.
 </ResponseField>
 
 <ResponseField name="[field_name].bboxes[].bbox" type="array">
-  Bounding box coordinates [x1, y1, x2, y2] in pixels
+  Bounding box coordinates [x1, y1, x2, y2] in pixels. Only included when citations are enabled.
 </ResponseField>
 
 <ResponseField name="[field_name].page_no" type="number">
-  Page number where the data was extracted (1-indexed)
+  Page number where the data was extracted (1-indexed). Only included when citations are enabled via citation_config.
 </ResponseField>
 
 <ResponseField name="min_confidence_score" type="number">
@@ -200,6 +221,13 @@ data = {
     "schema_data": json.dumps(schema)
 }
 
+# Optional: Enable citations if needed
+# citation_config = {
+#     "semantic_citations": True,
+#     "ocr_citations": True
+# }
+# data["citation_config"] = json.dumps(citation_config)
+
 response = requests.post(url, headers=headers, files=files, data=data)
 
 if response.status_code == 200:
@@ -234,6 +262,13 @@ const schema = {
 };
 
 formData.append('schema_data', JSON.stringify(schema));
+
+// Optional: Enable citations if needed
+// const citationConfig = {
+//   semantic_citations: true,
+//   ocr_citations: true
+// };
+// formData.append('citation_config', JSON.stringify(citationConfig));
 
 const response = await fetch('https://prod.visionapi.unsiloed.ai/extract', {
   method: 'POST',
@@ -284,6 +319,67 @@ if (response.ok) {
 ```
 
 </ResponseExample>
+
+## Citation Configuration
+
+The `citation_config` parameter controls the level of citation detail returned with extracted data. Citations provide references back to the source document, allowing you to trace where each extracted value was found.
+
+### Configuration Options
+
+<ParamField body="semantic_citations" type="boolean" default="false">
+  **Enabled (`true`):**
+  - Returns segment-level citations with bounding boxes
+  - Provides contextual text spans for each extracted field
+  - Useful for tracing data back to document sections
+
+  **Disabled (`false`):**
+  - No segment-level citations included
+  - Smaller response payload
+</ParamField>
+
+<ParamField body="ocr_citations" type="boolean" default="false">
+  **Enabled (`true`):**
+  - Returns word-level citations with precise coordinates
+  - Includes OCR-level bounding boxes for individual words
+  - Enables character-level text mapping
+
+  **Disabled (`false`):**
+  - No word-level citations included
+  - Faster processing and smaller response size
+</ParamField>
+
+### Use Cases
+
+**Segment-Level and Word-Level Citations**
+```json
+{
+  "semantic_citations": true,
+  "ocr_citations": true
+}
+```
+Use when you need both segment-level context and word-level precision for detailed auditing or UI highlighting.
+
+**Segment-Level Citations Only**
+```json
+{
+  "semantic_citations": true,
+  "ocr_citations": false
+}
+```
+Use when you need to trace data back to document sections without word-level detail. Balanced performance with moderate response size.
+
+**No Citations (Values Only)**
+```json
+{
+  "semantic_citations": false,
+  "ocr_citations": false
+}
+```
+Use when you only need extracted values without citation references. Fastest processing with minimal response payload.
+
+<Note>
+When both `semantic_citations` and `ocr_citations` are set to `false` (default), the response will only contain `value` and `score` for each field. The `bboxes` and `page_no` fields will be omitted.
+</Note>
 
 ## JSON Schema Definition
 
