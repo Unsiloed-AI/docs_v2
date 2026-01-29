@@ -56,7 +56,7 @@ This ensures predictable responses and easy downstream validation.
 
 ### Primitive Types
 
-For simple fields like strings, numbers, and booleans, you must use the format `type: "string"` (not just `"string"`). These are the building blocks of your schema.
+For simple fields like strings, numbers, and booleans, you must use the format `type: "string"`. These are the building blocks of your schema.
 
 ```json
 {
@@ -70,16 +70,12 @@ For simple fields like strings, numbers, and booleans, you must use the format `
       "type": "number",
       "description": "Total amount in USD"
     },
-    "quantity": {
-      "type": "integer",
-      "description": "Number of items"
-    },
     "is_paid": {
       "type": "boolean",
       "description": "Payment status"
     }
   },
-  "required": ["invoice_number", "total_amount","quantity", "is_paid"],
+  "required": ["invoice_number", "total_amount", "is_paid"],
   "additionalProperties": false
 }
 ```
