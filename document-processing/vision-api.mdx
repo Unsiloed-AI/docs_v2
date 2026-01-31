@@ -41,16 +41,144 @@ Unsiloed AI uses **JSON Schema** to define what data should be extracted from a 
 
 Schemas are strict by default, making outputs deterministic and production-safe.
 
-## Schema Rules (Quick Overview)
+## Schema Rules - Detailed Guide
 
-All extraction schemas must follow the JSON Schema specification with the following constraints:
+All extraction schemas must follow JSON Schema specification with strict constraints to ensure deterministic, production-safe outputs.
 
-- **The root must be an object**: `{ "type": "object" }`
-- **Use `properties`** to define fields you want to extract
-- **Use `required`** to enforce mandatory fields
-- **Set `additionalProperties: false`** to prevent unexpected outputs
+### Core Requirements
 
-This ensures predictable responses and easy downstream validation.
+**1. Root Object**
+
+Every schema must start with `"type": "object"`. Arrays or primitives are not allowed at root level.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    // Define your fields here
+  },
+  "required": [...],
+  "additionalProperties": false
+}
+```
+
+**2. Properties**
+
+Define all fields you want to extract using the `"properties"` key. Each field must specify a `"type"` and should include a clear `"description"`.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "field_name_1": {
+      "type": "string",
+      "description": "Clear description of what to extract"
+    },
+    "field_name_2": {
+      "type": "number",
+      "description": "Description with units or context"
+    }
+  },
+  "required": [...],
+  "additionalProperties": false
+}
+```
+
+**3. Required Fields**
+
+Specify mandatory fields using the `"required"` array. Field names must exactly match those defined in `"properties"`.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "mandatory_field": { "type": "string", "description": "This field is required" },
+    "another_required_field": { "type": "string", "description": "This is also required" }
+  },
+  "required": ["mandatory_field", "another_required_field"],
+  "additionalProperties": false
+}
+```
+
+**4. Additional Properties**
+
+Always set `"additionalProperties": false` at every object level to ensure only specified fields appear in output.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field_name": { "type": "string" }
+        },
+        "required": [...],
+        "additionalProperties": false  // Required in array items
+      }
+    }
+  },
+  "required": [...],
+  "additionalProperties": false  // Required at root level
+}
+```
+
+---
+
+### Supported Types
+
+**String** - For text, dates, IDs, names, addresses, and any textual data
+```json
+{
+  "field_name": {
+    "type": "string",
+    "description": "Description of the text field"
+  }
+}
+```
+
+**Number** - For integers and decimals like prices, quantities, counts, and measurements
+```json
+{
+  "field_name": {
+    "type": "number",
+    "description": "Description with units (e.g., USD, kg)"
+  }
+}
+```
+
+**Boolean** - For true/false values such as status flags and yes/no fields
+```json
+{
+  "field_name": {
+    "type": "boolean",
+    "description": "Description of the boolean condition"
+  }
+}
+```
+
+**Array** - For repeating items like line items or lists. Must include `items` to define the structure of array elements
+```json
+{
+  "field_name": {
+    "type": "array",
+    "description": "Description of the array items",
+    "items": {
+      "type": "object",
+      "properties": {
+        "item_field1": { "type": "string", "description": "..." },
+        "item_field2": { "type": "string", "description": "..." }
+      },
+      "required": [...],
+      "additionalProperties": false
+    }
+  }
+}
+```
+
+---
 
 ## Building Schemas
 
