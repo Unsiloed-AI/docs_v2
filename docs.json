@@ -51,7 +51,10 @@
           {
             "group": "FAQ",
             "pages": [
-              "faq/general"
+              "faq/general",
+              "faq/pricing",
+              "faq/support",
+              "faq/feedback"
             ]
           }
         ]
