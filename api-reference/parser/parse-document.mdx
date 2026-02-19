@@ -916,6 +916,14 @@ if (response.ok) {
 }
 ```
 
+```text 429 - Usage Limit Exceeded
+Usage limit exceeded
+```
+
+```text 429 - Rate Limit Exceeded
+Rate limit exceeded
+```
+
 </ResponseExample>
 
 ## Retrieving Results
@@ -1100,3 +1108,5 @@ Each segment includes detailed metadata such as confidence scores, bounding boxe
 7. **Both File and URL Provided**: Cannot provide both `file` and `url` simultaneously
 8. **Invalid URL**: URL is not accessible or malformed
 9. **URL Download Failed**: Unable to download document from provided URL
+10. **Usage Limit Exceeded** (`429`): Billing usage cap reached. Returns plain text: `Usage limit exceeded`. No `Retry-After` header.
+11. **Rate Limit Exceeded** (`429`): Org exceeded 60 requests / 60s sliding window. Returns plain text: `Rate limit exceeded` with `Retry-After: 1` header.
