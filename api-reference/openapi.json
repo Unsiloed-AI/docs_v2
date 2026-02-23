@@ -220,11 +220,6 @@
                     "type": "boolean",
                     "description": "Enable citation extraction from PDF documents. Extracts structured bibliography and hyperlinks in-text citations in markdown output (default: false)",
                     "default": false
-                  },
-                  "validate_table_segments": {
-                    "type": "boolean",
-                    "description": "Whether to validate and correct table segment types using VLM (default: false)",
-                    "default": false
                   }
                 },
                 "required": [

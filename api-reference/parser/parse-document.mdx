@@ -46,10 +46,6 @@ The Parse Document endpoint processes PDFs, images (PNG, JPEG, TIFF), and office
   Whether to merge tables that span across multiple pages into a single unified table structure. When enabled, consecutive table segments with matching headers will be consolidated. Default: false
 </ParamField>
 
-<ParamField body="validate_table_segments" type="boolean">
-  Whether to use our Vision Language Model (Judge) to validate and correct table segment classifications. When enabled, segments that may have been misclassified (e.g., tables detected as text or pictures) are validated and corrected(add 4-5s Latency per page).
-</ParamField>
-
 <ParamField body="keep_segment_types" type="string">
   Filter output to include only specific segment types. Accepts a comma-separated list of segment types or "all" to include everything. Examples: `"table"`, `"picture"`, `"table,picture"`, `"table,formula"`. Default: "all"
   
@@ -79,6 +75,10 @@ The Parse Document endpoint processes PDFs, images (PNG, JPEG, TIFF), and office
   JSON configuration object to customize how different segment types are processed. Allows you to control HTML/Markdown generation strategies, specify which field should populate the `content` field for each segment type, and configure the AI model for table processing. Example: `{"Table": {"html": "LLM", "markdown": "LLM", "content_source": "HTML", "model_id": "us_table_v2"}}`.
 </ParamField>
 
+<ParamField body="validate_segments" type="string">
+  JSON array of segment types to validate using VLM (Vision Language Model). When specified, the listed segment types are validated and corrected for misclassifications. Pass as a JSON-encoded string array. Example: `'["Table","Picture","Formula"]'`. Supported segment types: `Table`, `Picture`, `Formula`.
+</ParamField>
+
 
 ## Configuration Best Practices
 
@@ -97,7 +97,7 @@ Click to expand each scenario below to view detailed configuration settings, rec
       "segmentation_method": "smart_layout_detection",
       "ocr_mode": "full_ocr",
       "merge_tables": true,
-      "validate_table_segments": true,
+      "validate_segments": ["Table", "Picture", "Formula"],
       "segment_analysis": {
         "Table": {
           "html": "LLM",
@@ -118,7 +118,7 @@ Click to expand each scenario below to view detailed configuration settings, rec
 
     **Trade-offs:**
     - **Latency**: +2-3 seconds per page for high resolution
-    - **Latency**: +1-2 seconds per page for table validation
+    - **Latency**: +1-2 seconds per page for segment validation
   </Accordion>
 
   <Accordion title="Fast Processing">
@@ -130,8 +130,7 @@ Click to expand each scenario below to view detailed configuration settings, rec
       "use_high_resolution": false,
       "segmentation_method": "page_by_page",
       "ocr_mode": "auto_ocr",
-      "merge_tables": false,
-      "validate_table_segments": false
+      "merge_tables": false
     }
     ```
 
@@ -154,8 +153,8 @@ Click to expand each scenario below to view detailed configuration settings, rec
     ```json
     {
       "merge_tables": true,
-      "validate_table_segments": true,
       "keep_segment_types": "table,picture",
+      "validate_segments": ["Table", "Picture"],
       "segmentation_method": "smart_layout_detection",
       "ocr_mode": "auto_ocr",
       "segment_analysis": {
@@ -187,8 +186,8 @@ Click to expand each scenario below to view detailed configuration settings, rec
     ```json
     {
       "merge_tables": true,
-      "validate_table_segments": true,
       "keep_segment_types": "table",
+      "validate_segments": ["Table"],
       "output_fields": {
         "html": true,
         "markdown": true,
@@ -640,10 +639,6 @@ The `content_source` parameter determines which field's value will be used to po
   Whether table merging is enabled for this job
 </ResponseField>
 
-<ResponseField name="validate_table_segments" type="boolean">
-  Whether VLM-based table segment validation is enabled for this job
-</ResponseField>
-
 <ResponseField name="keep_segment_types" type="string">
   Segment types filter applied to this job (stored in metadata)
 </ResponseField>
@@ -696,8 +691,8 @@ curl -X 'POST' \
   -F 'segmentation_method=smart_layout_detection' \
   -F 'ocr_mode=auto_ocr' \
   -F 'merge_tables=true' \
-  -F 'validate_table_segments=false' \
   -F 'keep_segment_types=all' \
+  -F 'validate_segments=["Table","Picture","Formula"]' \
   -F 'segment_analysis={"Table":{"html":"LLM","markdown":"LLM","extended_context":true,"crop_image":"All","model_id":"us_table_v2"}}'
 
 # Alternative: Use presigned URL instead of file upload
@@ -726,8 +721,8 @@ data = {
     "segmentation_method": "smart_layout_detection",
     "ocr_mode": "auto_ocr",
     "merge_tables": "true",
-    "validate_table_segments": "false",
     "keep_segment_types": "all",
+    "validate_segments": json.dumps(["Table", "Picture", "Formula"]),
     "segment_analysis": json.dumps({
         "Table": {
             "html": "LLM",
@@ -761,7 +756,6 @@ files["file"][1].close()
 #     "segmentation_method": "smart_layout_detection",
 #     "ocr_mode": "auto_ocr",
 #     "merge_tables": "true",
-#     "validate_table_segments": "false",
 #     "keep_segment_types": "all"
 # }
 # response = requests.post(url, headers=headers, data=data)
@@ -770,8 +764,8 @@ files["file"][1].close()
 # For financial reports or documents where you only need tables:
 # data = {
 #     "merge_tables": "true",
-#     "validate_table_segments": "true",
 #     "keep_segment_types": "table",
+#     "validate_segments": json.dumps(["Table"]),
 #     "segmentation_method": "smart_layout_detection",
 #     "ocr_mode": "auto_ocr"
 # }
@@ -825,8 +819,8 @@ formData.append('use_high_resolution', 'true');
 formData.append('segmentation_method', 'smart_layout_detection');
 formData.append('ocr_mode', 'auto_ocr');
 formData.append('merge_tables', 'true');
-formData.append('validate_table_segments', 'false');
 formData.append('keep_segment_types', 'all');
+formData.append('validate_segments', JSON.stringify(["Table", "Picture", "Formula"]));
 formData.append('segment_analysis', JSON.stringify({
   Table: {
     html: 'LLM',
@@ -864,7 +858,6 @@ if (response.ok) {
 // ========== Use Case: Extract Tables Only ==========
 // For financial documents where you only need tables:
 // formData.append('merge_tables', 'true');
-// formData.append('validate_table_segments', 'true');
 // formData.append('keep_segment_types', 'table');
 // formData.append('segmentation_method', 'smart_layout_detection');
 // formData.append('ocr_mode', 'auto_ocr');
