@@ -1,0 +1,29 @@
+---
+title: "Sample Endpoint"
+openapi: "/api-reference/openapi.json POST /sample"
+description: "A sample endpoint for testing."
+---
+
+## Overview
+
+This is a sample endpoint used in tests.
+
+## Request
+
+<ParamField body="name" type="string" required>
+  The name to process.
+</ParamField>
+
+<ParamField body="verbose" type="boolean">
+  Enable verbose output. Defaults to `false`.
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  Unique identifier for the created resource.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status of the resource.
+</ResponseField>
