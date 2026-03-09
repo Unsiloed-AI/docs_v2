@@ -108,7 +108,7 @@ def enrich_file(
 
     message = client.messages.create(
         model=model,
-        max_tokens=8192,
+        max_tokens=16384,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
     )
@@ -118,6 +118,60 @@ def enrich_file(
     # Ensure the output starts with frontmatter delimiter
     if not result.startswith("---"):
         # Claude sometimes adds a preamble — strip it
+        idx = result.find("---")
+        if idx != -1:
+            result = result[idx:]
+
+    return result
+
+
+def enrich_with_critique(
+    mdx_raw: str,
+    operation: dict[str, Any],
+    schemas: dict[str, Any],
+    issues: list[Any],
+    model: str = "claude-sonnet-4-6",
+    bedrock: bool = False,
+) -> str:
+    """
+    Second-pass enrichment: send the current MDX + spec + judge critique back
+    to the generator so it can fix the identified issues.
+
+    `issues` is a list of judge.Issue objects (or any objects with .location,
+    .claim_in_doc, .truth_in_code, .fix attributes).
+
+    Returns the revised MDX string, or the original mdx_raw on failure.
+    """
+    critique_lines = ["The following issues were found in the documentation:"]
+    for i, issue in enumerate(issues, 1):
+        critique_lines.append(
+            f"\n{i}. [{issue.severity.upper()}] {issue.location}\n"
+            f"   Doc says: {issue.claim_in_doc}\n"
+            f"   Truth:    {issue.truth_in_code}\n"
+            f"   Fix:      {issue.fix}"
+        )
+    critique_block = "\n".join(critique_lines)
+
+    base_message = _build_user_message(mdx_raw, operation, schemas)
+    user_message = (
+        base_message
+        + "\n\n## JUDGE CRITIQUE — fix all issues listed below before returning the MDX\n\n"
+        + critique_block
+    )
+
+    client = _make_client(bedrock=bedrock)
+    system_prompt = _load_system_prompt()
+
+    message = client.messages.create(
+        model=model,
+        max_tokens=16384,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_message}],
+    )
+
+    result = message.content[0].text.strip()
+
+    if not result.startswith("---"):
         idx = result.find("---")
         if idx != -1:
             result = result[idx:]

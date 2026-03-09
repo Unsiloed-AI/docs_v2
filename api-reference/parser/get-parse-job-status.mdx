@@ -1,6 +1,6 @@
 ---
 title: "Get Parse Result"
-openapi: "/api-reference/parser/openapi-v1.json GET /parse/{job_id}"
+openapi: "/api-reference/parser/openapi-v1.json GET /parse/{task_id}"
 description: "Check the status and retrieve results of parsing jobs"
 ---
 
@@ -12,35 +12,96 @@ The Get Parse Job Status endpoint allows you to check the current status of pars
 Parsing jobs are processed asynchronously. Use this endpoint to poll for completion and retrieve results when the job status is "Succeeded".
 </Note>
 
+## Parameters
+
+<ParamField path="task_id" type="string" required>
+  Job ID returned by `POST /parse`.
+</ParamField>
+
+<ParamField query="base64_urls" type="boolean">
+  Return segment images as base64-encoded data URIs instead of S3 presigned URLs. Defaults to `false`.
+</ParamField>
+
+<ParamField query="include_chunks" type="boolean">
+  Include the `chunks` array in the response. Defaults to `true`.
+</ParamField>
+
+<ParamField query="output_file" type="boolean">
+  Return a presigned S3 URL to the raw output JSON file instead of inlining the full response body. Defaults to `false`.
+</ParamField>
+
 ## Response
 
 <ResponseField name="job_id" type="string">
-  Unique identifier for the parsing job
+  Job identifier.
 </ResponseField>
 
 <ResponseField name="status" type="string">
-  Current job status: "Starting", "Processing", "Succeeded", or "Failed"
+  Current job status: `Starting`, `Processing`, `Succeeded`, `Failed`, or `Cancelled`.
 </ResponseField>
 
 <ResponseField name="created_at" type="string">
-  Timestamp when the job was created
+  ISO 8601 timestamp when the job was created.
 </ResponseField>
 
 <ResponseField name="started_at" type="string">
-  Timestamp when processing started (only present when status is not "Starting")
+  ISO 8601 timestamp when processing started. Present when status is not `Starting`.
 </ResponseField>
 
 <ResponseField name="finished_at" type="string">
-  Timestamp when processing completed (only present when status is "Succeeded" or "Failed")
+  ISO 8601 timestamp when processing completed. Present when status is `Succeeded` or `Failed`.
 </ResponseField>
 
+<ResponseField name="metadata" type="object">
+  Citation or job metadata. Populated when `xml_citation` is enabled or from the job record.
+</ResponseField>
 
-<ResponseField name="total_chunks" type="number">
-  Number of chunks in the document (only present when status is "Succeeded")
+<ResponseField name="total_chunks" type="integer">
+  Total number of document chunks. Present when status is `Succeeded`.
+</ResponseField>
+
+<ResponseField name="page_count" type="integer">
+  Number of pages in the document. Present when status is `Succeeded`.
 </ResponseField>
 
 <ResponseField name="chunks" type="array">
-  Array of document chunks with detailed analysis (only present when status is "Succeeded")
+  Array of document chunks with segments and extracted content. Present when status is `Succeeded`.
+</ResponseField>
+
+<ResponseField name="pdf_url" type="string">
+  Presigned S3 URL to the generated PDF. Present when status is `Succeeded`.
+</ResponseField>
+
+<ResponseField name="file_name" type="string">
+  Original file name from the job record.
+</ResponseField>
+
+<ResponseField name="file_type" type="string">
+  MIME type of the uploaded file.
+</ResponseField>
+
+<ResponseField name="file_url" type="string">
+  S3 URL of the original uploaded file.
+</ResponseField>
+
+<ResponseField name="credit_used" type="integer">
+  Credits used for this job.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Error or status detail message. Present when status is `Failed`.
+</ResponseField>
+
+<ResponseField name="configuration" type="object">
+  Configuration used for this job, mirroring the parameters submitted at creation time.
+</ResponseField>
+
+<ResponseField name="merge_tables" type="boolean">
+  Whether table merging was enabled for this job.
+</ResponseField>
+
+<ResponseField name="id" type="string">
+  Internal job record ID.
 </ResponseField>
 
 <RequestExample>
@@ -137,7 +198,8 @@ const result = await getParseJobStatus(jobId, 'your-api-key');
 {
   "job_id": "04a7a6d8-5ef7-465a-b22a-8a98e7104dd9",
   "status": "Starting",
-  "created_at": "2025-10-22T06:51:16.870302Z"
+  "created_at": "2025-10-22T06:51:16.870302Z",
+  "metadata": {}
 }
 ```
 
@@ -146,7 +208,8 @@ const result = await getParseJobStatus(jobId, 'your-api-key');
   "job_id": "04a7a6d8-5ef7-465a-b22a-8a98e7104dd9",
   "status": "Processing",
   "created_at": "2025-10-22T06:51:16.870302Z",
-  "started_at": "2025-10-22T06:51:16.966136Z"
+  "started_at": "2025-10-22T06:51:16.966136Z",
+  "metadata": {}
 }
 ```
 
@@ -157,9 +220,18 @@ const result = await getParseJobStatus(jobId, 'your-api-key');
   "created_at": "2025-10-22T06:51:16.870302Z",
   "started_at": "2025-10-22T06:51:16.966136Z",
   "finished_at": "2025-10-22T06:57:19.821541Z",
+  "metadata": {},
   "total_chunks": 25,
+  "page_count": 10,
+  "pdf_url": "https://s3.us-east-1.amazonaws.com/unsiloed-bucket/output.pdf?...",
+  "file_name": "document.pdf",
+  "file_type": "application/pdf",
+  "credit_used": 10,
   "chunks": [
     {
+      "chunk_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "chunk_length": 128,
+      "embed": "eternal logo the image displays a logo...",
       "segments": [
         {
           "segment_type": "Picture",
@@ -204,20 +276,17 @@ const result = await getParseJobStatus(jobId, 'your-api-key');
   "created_at": "2025-10-22T06:51:16.870302Z",
   "started_at": "2025-10-22T06:51:16.966136Z",
   "finished_at": "2025-10-22T06:51:25.123456Z",
+  "metadata": {},
   "message": "Failed to process document: File appears to be corrupted"
 }
 ```
 
 ```json Error Response - Job Not Found
-{
-  "detail": "Job 04a7a6d8-5ef7-465a-b22a-8a98e7104dd9 not found"
-}
+"Job 04a7a6d8-5ef7-465a-b22a-8a98e7104dd9 not found"
 ```
 
-```json Error Response - Invalid API Key
-{
-  "detail": "Invalid API key"
-}
+```json Error Response - Server Error
+"Internal server error"
 ```
 
 </ResponseExample>
@@ -342,4 +411,4 @@ Each segment includes:
 - **Concurrent Jobs**: Limited number of active parsing jobs per API key
 - **Request Frequency**: Avoid excessive polling (recommended: 5-10 second intervals)
 
-Check your API plan for specific limits and quotas. 
+Check your API plan for specific limits and quotas.

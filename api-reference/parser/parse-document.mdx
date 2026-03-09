@@ -23,36 +23,47 @@ The Parse Document endpoint processes PDFs, images (PNG, JPEG, TIFF), and office
 </ParamField>
 
 <ParamField body="url" type="string">
-  Presigned URL of the document to process. The URL must be publicly accessible or a valid presigned URL from cloud storage (S3, GCS, Azure Blob, etc.). Supported formats: PDF, images (PNG, JPEG, TIFF), and office documents (PPT, PPTX, DOC, DOCX, XLS, XLSX). Required if `file` is not provided.
+  Presigned or public URL of the document to fetch and process. Required if `file` is not provided.
 </ParamField>
 
 <ParamField body="use_high_resolution" type="boolean">
-  Whether to use high-resolution images for cropping and post-processing. (Latency penalty: ~2-3 seconds per page). Default: false
+  Use high-resolution images for cropping and post-processing. Latency penalty: ~2–3 seconds per page. Defaults to `true`.
 </ParamField>
 
 <ParamField body="segmentation_method" type="string">
   Document segmentation strategy:
-  - `"smart_layout_detection"` (default): Analyzes pages for layout elements using bounding boxes
-  - `"page_by_page"`: Treats each page as a single segment
+  - `"smart_layout_detection"` (default): Detects layout elements (tables, pictures, formulas, etc.) using bounding boxes.
+  - `"page_by_page"`: Treats each page as a single segment; faster for simple documents.
 </ParamField>
 
 <ParamField body="ocr_mode" type="string">
-  OCR processing strategy:
-  - `"auto_ocr"` (default): Automatically determine when to use OCR
-  - `"full_ocr"`: Process all text elements with OCR
+  OCR processing mode:
+  - `"auto_ocr"` (default): Applies OCR only where needed.
+  - `"force_ocr"`: Applies OCR to all content regardless of existing text layer.
+</ParamField>
+
+<ParamField body="ocr_engine" type="string">
+  OCR engine to use for text recognition:
+  - `"UnsiloedBeta"` (default): handles rotated/warped text and irregular bounding boxes.
+  - `"UnsiloedHawk"`: higher accuracy for complex layouts and mixed content.
+  - `"UnsiloedStorm"`: enterprise-grade accuracy optimized for 50+ languages.
 </ParamField>
 
 <ParamField body="merge_tables" type="boolean">
-  Whether to merge tables that span across multiple pages into a single unified table structure. When enabled, consecutive table segments with matching headers will be consolidated. Default: false
+  Merge tables that span multiple pages into a single unified structure. Defaults to `false`.
 </ParamField>
 
 <ParamField body="validate_table_segments" type="boolean">
-  Whether to use our Vision Language Model (Judge) to validate and correct table segment classifications. When enabled, segments that may have been misclassified (e.g., tables detected as text or pictures) are validated and corrected(add 4-5s Latency per page).
+  Legacy: validate table segment classifications using VLM. Prefer `validate_segments: ["Table"]` instead. Defaults to `false`.
+</ParamField>
+
+<ParamField body="validate_segments" type="string">
+  JSON array string of segment types to validate with VLM. Example: `["Table", "Formula", "Picture"]`. Defaults to `[]`.
 </ParamField>
 
 <ParamField body="keep_segment_types" type="string">
-  Filter output to include only specific segment types. Accepts a comma-separated list of segment types or "all" to include everything. Examples: `"table"`, `"picture"`, `"table,picture"`, `"table,formula"`. Default: "all"
-  
+  Filter output to include only the specified segment types (comma-separated). Example: `"table,picture"`. Use `"all"` to include everything. Defaults to `"all"`.
+
   Available segment types:
   - `table`: Tabular data segments
   - `picture`: Image and graphic segments
@@ -68,15 +79,59 @@ The Parse Document endpoint processes PDFs, images (PNG, JPEG, TIFF), and office
 </ParamField>
 
 <ParamField body="xml_citation" type="boolean">
-  Enable citation extraction from PDF documents. When enabled, the API extracts structured bibliography information and in-text citation references, hyperlinking them in the markdown output. Only applicable to PDF files. Default: false
+  Extract and hyperlink bibliography citations in the markdown output. PDFs only. Defaults to `false`.
 </ParamField>
 
 <ParamField body="output_fields" type="string">
-  JSON configuration object to control which fields are included in the response. By default, all fields are included. Set fields to `false` to exclude them and reduce response size. Example: `{"html": false, "markdown": true, "ocr": false}`. Available fields: `html`, `markdown`, `ocr`, `image`, `llm`, `content`, `bbox`, `confidence`, `embed`.
+  JSON object controlling which output fields are included in the response. Example: `{"html": false, "markdown": true, "ocr": false}`. All fields default to `true`. Available fields: `html`, `markdown`, `ocr`, `image`, `llm`, `content`, `bbox`, `confidence`, `embed`.
 </ParamField>
 
 <ParamField body="segment_analysis" type="string">
-  JSON configuration object to customize how different segment types are processed. Allows you to control HTML/Markdown generation strategies, specify which field should populate the `content` field for each segment type, and configure the AI model for table processing. Example: `{"Table": {"html": "LLM", "markdown": "LLM", "content_source": "HTML", "model_id": "us_table_v2"}}`.
+  JSON object controlling HTML/Markdown generation strategy and AI model per segment type. Example: `{"Table": {"html": "LLM", "markdown": "LLM", "model_id": "us_table_v2"}}`.
+</ParamField>
+
+<ParamField body="segment_processing" type="string">
+  Alias for `segment_analysis` (Core Parser name). If both are provided, this takes precedence.
+</ParamField>
+
+<ParamField body="page_range" type="string">
+  Page range to process. Formats: `"1-5"`, `"2,4,6"`, `"[1,3,5]"`. Defaults to all pages.
+</ParamField>
+
+<ParamField body="segment_type_naming" type="string">
+  Segment type naming convention. `"Unsiloed"` (default) — e.g., `PageHeader`, `ListItem`, `Picture`. `"Other"` — alternative names e.g., `Header`, `List Item`, `Figure`.
+</ParamField>
+
+<ParamField body="detect_checkboxes" type="boolean">
+  Detect checkboxes in the document. Defaults to `false`.
+</ParamField>
+
+<ParamField body="extract_charts" type="boolean">
+  Extract structured data from charts and graphs. Defaults to `false`.
+</ParamField>
+
+<ParamField body="extract_colors" type="boolean">
+  Transfer text color from the PDF text layer to OCR results. Defaults to `false`.
+</ParamField>
+
+<ParamField body="extract_links" type="boolean">
+  Attach hyperlink URLs from PDF annotations to OCR results. Defaults to `false`.
+</ParamField>
+
+<ParamField body="error_handling" type="string">
+  Error handling strategy for non-critical processing errors. `"Continue"` (default) — proceed despite errors (e.g., LLM refusals). `"Fail"` — stop and fail the task on any error.
+</ParamField>
+
+<ParamField body="expires_in" type="integer">
+  Seconds until the task and its output are deleted. Defaults to the plan expiration time.
+</ParamField>
+
+<ParamField body="chunk_processing" type="string">
+  JSON object for chunk processing configuration.
+</ParamField>
+
+<ParamField body="llm_processing" type="string">
+  JSON object for LLM processing configuration.
 </ParamField>
 
 
@@ -95,7 +150,7 @@ Click to expand each scenario below to view detailed configuration settings, rec
     {
       "use_high_resolution": true,
       "segmentation_method": "smart_layout_detection",
-      "ocr_mode": "full_ocr",
+      "ocr_mode": "force_ocr",
       "merge_tables": true,
       "validate_table_segments": true,
       "segment_analysis": {
@@ -250,7 +305,7 @@ Click to expand each scenario below to view detailed configuration settings, rec
     ```json
     {
       "use_high_resolution": true,
-      "ocr_mode": "full_ocr",
+      "ocr_mode": "force_ocr",
       "segmentation_method": "smart_layout_detection"
     }
     ```
@@ -351,7 +406,7 @@ The `ocr_mode` parameter controls optical character recognition processing:
 
 - **`"auto_ocr"`** (default): Intelligently determines when OCR is needed based on the document content. Balances accuracy and performance.
   
-- **`"full_ocr"`**: Applies OCR to all text elements in the document. Use this for scanned documents or when maximum text extraction is required.
+- **`"force_ocr"`**: Applies OCR to all content regardless of existing text layer. Use this for scanned documents or when maximum text extraction is required.
 
 ### Table Merging
 
@@ -602,50 +657,45 @@ The `content_source` parameter determines which field's value will be used to po
 - When `content_source` is set to `"HTML"`, the `content` field will contain the HTML representation, and the separate `html` and `markdown` fields will be empty
 - When `content_source` is set to `"Markdown"`, the `content` field will contain the Markdown representation, and the separate `html` and `markdown` fields will be empty
 - When `content_source` is set to `"OCR"` (default), the `content` field contains OCR text, and `html` and `markdown` fields are populated separately
-- When `content_source` is set to `"LLM"`, the `content` field contains LLM-generated content
 
 **Use Cases:**
 
 - **HTML as Content**: Set `content_source: "HTML"` for Table segments when you want HTML-formatted table data directly in the `content` field
 - **Markdown as Content**: Set `content_source: "Markdown"` for Picture segments when you want Markdown-formatted descriptions in the `content` field
-- **LLM-Enhanced Content**: Use `"LLM"` for both `html`/`markdown` generation strategies and set `content_source: "LLM"` to get AI-enhanced content in the `content` field
+- **LLM-Enhanced Output**: Use `"LLM"` for both `html` and `markdown` generation strategies to get AI-enhanced representations in those fields
 
 ## Response
 
-<ResponseField name="job_id" type="string">
-  Unique identifier for the parsing job
+<ResponseField name="job_id" type="string" required>
+  Job identifier — pass this to `GET /parse/{job_id}` to poll for results.
 </ResponseField>
 
-<ResponseField name="status" type="string">
-  Initial job status (typically "Starting")
+<ResponseField name="status" type="string" required>
+  Initial job status. Always `"Starting"` on creation.
 </ResponseField>
 
-<ResponseField name="file_name" type="string">
-  Name of the uploaded file
+<ResponseField name="file_name" type="string" required>
+  Name of the uploaded file, or `"unknown"` when a URL was provided.
 </ResponseField>
 
-<ResponseField name="created_at" type="string">
-  Timestamp when the job was created
+<ResponseField name="created_at" type="string" required>
+  ISO 8601 timestamp when the job was created.
 </ResponseField>
 
-<ResponseField name="message" type="string">
-  Status message about the job creation
+<ResponseField name="message" type="string" required>
+  Human-readable status message with a polling hint.
 </ResponseField>
 
-<ResponseField name="quota_remaining" type="number">
-  Remaining page quota for the API key
+<ResponseField name="credit_used" type="integer" required>
+  Number of pages deducted from your quota for this job.
 </ResponseField>
 
-<ResponseField name="merge_tables" type="boolean">
-  Whether table merging is enabled for this job
+<ResponseField name="quota_remaining" type="integer" required>
+  Remaining page quota after this job was deducted.
 </ResponseField>
 
-<ResponseField name="validate_table_segments" type="boolean">
-  Whether VLM-based table segment validation is enabled for this job
-</ResponseField>
-
-<ResponseField name="keep_segment_types" type="string">
-  Segment types filter applied to this job (stored in metadata)
+<ResponseField name="merge_tables" type="boolean" required>
+  Whether table merging is enabled for this job (reflects the submitted `merge_tables` value).
 </ResponseField>
 
 ## Document Analysis Features
@@ -695,8 +745,8 @@ curl -X 'POST' \
   -F 'use_high_resolution=true' \
   -F 'segmentation_method=smart_layout_detection' \
   -F 'ocr_mode=auto_ocr' \
-  -F 'merge_tables=true' \
   -F 'validate_table_segments=false' \
+  -F 'merge_tables=true' \
   -F 'keep_segment_types=all' \
   -F 'segment_analysis={"Table":{"html":"LLM","markdown":"LLM","extended_context":true,"crop_image":"All","model_id":"us_table_v2"}}'
 
@@ -726,8 +776,8 @@ data = {
     "segmentation_method": "smart_layout_detection",
     "ocr_mode": "auto_ocr",
     "merge_tables": "true",
-    "validate_table_segments": "false",
     "keep_segment_types": "all",
+    "validate_table_segments": "false",
     "segment_analysis": json.dumps({
         "Table": {
             "html": "LLM",
@@ -746,6 +796,7 @@ if response.status_code == 200:
     print(f"Job ID: {result['job_id']}")
     print(f"Status: {result['status']}")
     print(f"File Name: {result['file_name']}")
+    print(f"Credit Used: {result['credit_used']}")
     print(f"Message: {result['message']}")
 else:
     print("Error:", response.status_code, response.text)
@@ -761,7 +812,6 @@ files["file"][1].close()
 #     "segmentation_method": "smart_layout_detection",
 #     "ocr_mode": "auto_ocr",
 #     "merge_tables": "true",
-#     "validate_table_segments": "false",
 #     "keep_segment_types": "all"
 # }
 # response = requests.post(url, headers=headers, data=data)
@@ -824,8 +874,8 @@ if (fileInput.files[0]) {
 formData.append('use_high_resolution', 'true');
 formData.append('segmentation_method', 'smart_layout_detection');
 formData.append('ocr_mode', 'auto_ocr');
-formData.append('merge_tables', 'true');
 formData.append('validate_table_segments', 'false');
+formData.append('merge_tables', 'true');
 formData.append('keep_segment_types', 'all');
 formData.append('segment_analysis', JSON.stringify({
   Table: {
@@ -851,6 +901,7 @@ if (response.ok) {
   console.log(`Job ID: ${result.job_id}`);
   console.log(`Status: ${result.status}`);
   console.log(`File Name: ${result.file_name}`);
+  console.log(`Credit Used: ${result.credit_used}`);
   console.log(`Message: ${result.message}`);
 } else {
   console.error('Parsing failed:', response.status, await response.text());
@@ -887,9 +938,10 @@ if (response.ok) {
   "status": "Starting",
   "file_name": "document.pdf",
   "created_at": "2025-07-18T10:42:10.545832520Z",
-  "message": "Job created successfully. Use GET /parse/{job_id} to check status and retrieve results.",
-  "quota_remaining": 23700,
-  "merge_tables": false,
+  "message": "Task created successfully. Use GET /parse/{job_id} to check status and retrieve results.",
+  "credit_used": 5,
+  "quota_remaining": 23695,
+  "merge_tables": false
 }
 ```
 
@@ -914,6 +966,10 @@ if (response.ok) {
 {
   "detail": "File size exceeds maximum limit of 100MB."
 }
+```
+
+```text 402 - Insufficient Quota
+Insufficient quota — not enough page credits remaining.
 ```
 
 ```text 429 - Usage Limit Exceeded
@@ -1108,5 +1164,6 @@ Each segment includes detailed metadata such as confidence scores, bounding boxe
 7. **Both File and URL Provided**: Cannot provide both `file` and `url` simultaneously
 8. **Invalid URL**: URL is not accessible or malformed
 9. **URL Download Failed**: Unable to download document from provided URL
-10. **Usage Limit Exceeded** (`429`): Billing usage cap reached. Returns plain text: `Usage limit exceeded`. No `Retry-After` header.
-11. **Rate Limit Exceeded** (`429`): Org exceeded 60 requests / 60s sliding window. Returns plain text: `Rate limit exceeded` with `Retry-After: 1` header.
+10. **Insufficient Quota** (`402`): Not enough page credits remaining.
+11. **Usage Limit Exceeded** (`429`): Billing usage cap reached. Returns plain text: `Usage limit exceeded`. No `Retry-After` header.
+12. **Rate Limit Exceeded** (`429`): Org exceeded 60 requests / 60s sliding window. Returns plain text: `Rate limit exceeded`. A `Retry-After` header may be present depending on the infrastructure layer (Envoy/Istio), but is not set by the application.

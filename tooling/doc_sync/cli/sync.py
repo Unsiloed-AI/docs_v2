@@ -19,9 +19,14 @@ Usage:
 
     # Apply to all MDX files
     uv run doc-sync --spec ../../parser/docs/openapi/v1.json --docs-root ..
+
+    # Sync + judge + revise if issues found
+    uv run doc-sync --spec ../../parser/docs/openapi/v1.json --docs-root .. \\
+        --source-root ../../parser --judge --revise
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import click
@@ -67,8 +72,8 @@ console = Console()
     default=None,
     show_default=False,
     help=(
-        "Claude model ID. Defaults to 'claude-sonnet-4-6' (Anthropic API) or "
-        "'us.anthropic.claude-opus-4-6-v1' (Bedrock)."
+        "Claude model ID for generation. Defaults to 'claude-sonnet-4-6' (Anthropic API) or "
+        "'us.anthropic.claude-opus-4-6-20250514-v1:0' (Bedrock)."
     ),
 )
 @click.option(
@@ -83,6 +88,44 @@ console = Console()
     default=False,
     help="Suppress per-file diff output (only print summary).",
 )
+@click.option(
+    "--judge",
+    "run_judge",
+    is_flag=True,
+    default=False,
+    help="Run LLM judge after enrichment to validate the updated doc against source code.",
+)
+@click.option(
+    "--revise",
+    is_flag=True,
+    default=False,
+    help=(
+        "If the judge finds issues, run a second generator pass to fix them before writing. "
+        "Requires --judge."
+    ),
+)
+@click.option(
+    "--source-root",
+    default=None,
+    type=click.Path(file_okay=False),
+    help="Path to the API source repo root (used by the judge to read Rust source code).",
+)
+@click.option(
+    "--judge-model",
+    default=None,
+    show_default=False,
+    help=(
+        "Claude model ID for the judge. Defaults to 'claude-opus-4-6' (Anthropic API) or "
+        "'us.anthropic.claude-opus-4-6-20250514-v1:0' (Bedrock). "
+        "Should be equal to or stronger than the generator model."
+    ),
+)
+@click.option(
+    "--fail-on-issues",
+    is_flag=True,
+    default=False,
+    help="Exit with code 1 if the judge finds issues in any file. Useful for CI.",
+)
 def main(
     spec: str,
     docs_root: str,
@@ -91,12 +134,33 @@ def main(
     model: str | None,
     bedrock: bool,
     no_diff: bool,
+    run_judge: bool,
+    revise: bool,
+    source_root: str | None,
+    judge_model: str | None,
+    fail_on_issues: bool,
 ) -> None:
     from doc_sync.enrichment.enrich import _BEDROCK_DEFAULT_MODEL
+    from doc_sync.judge.judge import _DEFAULT_JUDGE_MODEL, _BEDROCK_JUDGE_MODEL
+
     if model is None:
         model = _BEDROCK_DEFAULT_MODEL if bedrock else "claude-sonnet-4-6"
+    if judge_model is None:
+        judge_model = _BEDROCK_JUDGE_MODEL if bedrock else _DEFAULT_JUDGE_MODEL
+
     spec_path = Path(spec).resolve()
     docs_path = Path(docs_root).resolve()
+    source_path = Path(source_root).resolve() if source_root else None
+
+    if revise and not run_judge:
+        console.print("[red]--revise requires --judge.[/red]")
+        raise SystemExit(1)
+
+    if run_judge and source_path is None:
+        console.print(
+            "[yellow]⚠[/yellow] --judge is active but --source-root was not provided. "
+            "The judge will receive spec context only (no Rust source code)."
+        )
 
     # ── Step 1: Load spec ────────────────────────────────────────────────────
     console.rule("[bold blue]Step 1 — Loading OpenAPI spec")
@@ -122,8 +186,6 @@ def main(
 
     console.print(f"  [green]✓[/green] Found [bold]{len(all_mdx)}[/bold] MDX file(s) with openapi: frontmatter")
 
-    # Show which files matched / didn't match spec operations.
-    # Try exact key first, then normalized (handles {job_id} vs {task_id} drift).
     matched: list[load_mdx.MdxFile] = []
     for mdx_file in all_mdx:
         key = mdx_file.operation_key
@@ -133,7 +195,6 @@ def main(
         if resolved_key is not None:
             display = key if resolved_key == key else f"{key} [dim](matched via {resolved_key})[/dim]"
             console.print(f"    [cyan]✓[/cyan] {mdx_file.path.name}  →  {display}")
-            # Store resolved key so enrichment step can look it up
             mdx_file.operation_key = resolved_key
             matched.append(mdx_file)
         else:
@@ -162,7 +223,6 @@ def main(
         operation_data = operations[mdx_file.operation_key]
         stub = stubs.get(mdx_file.operation_key, "")
 
-        # If a stub exists, append it as extra context in the raw content
         source_mdx = mdx_file.raw_text
         if stub:
             source_mdx = (
@@ -182,7 +242,6 @@ def main(
             )
         except Exception as e:
             console.print(f"    [red]✗ Claude call failed: {e}[/red]")
-            # Keep original on failure — don't corrupt the file
             updated = mdx_file.raw_text
 
         results.append(
@@ -194,12 +253,103 @@ def main(
             )
         )
 
-    # ── Step 5: Write / diff ─────────────────────────────────────────────────
-    console.rule("[bold blue]Step 5 — Writing results")
+    # ── Step 5: Judge pass (optional) ────────────────────────────────────────
+    if run_judge:
+        console.rule("[bold blue]Step 5 — LLM Judge")
+        from doc_sync.judge import judge as judge_module
+        from doc_sync.judge.source_collector import collect_source_context
+
+        any_failed = False
+
+        for result in results:
+            operation_data = operations[result.operation_key]
+            console.print(f"  [cyan]⚖[/cyan] Judging {result.path.name}  ({result.operation_key})")
+
+            # Collect Rust source context
+            source_context = ""
+            if source_path:
+                source_context = collect_source_context(result.operation_key, source_path)
+                if source_context:
+                    console.print(f"    [dim]Source context collected ({len(source_context)} chars)[/dim]")
+                else:
+                    console.print("    [dim]No source context found — judging from spec only[/dim]")
+
+            try:
+                jr = judge_module.judge_file(
+                    mdx_content=result.updated,
+                    operation=operation_data,
+                    schemas=schemas,
+                    source_context=source_context,
+                    model=judge_model,
+                    bedrock=bedrock,
+                )
+            except Exception as e:
+                console.print(f"    [red]✗ Judge call failed: {e}[/red]")
+                continue
+
+            result.judge_result = jr
+
+            if jr.passed:
+                console.print(f"    [green]✓ PASS[/green]  {jr.summary}")
+            else:
+                any_failed = True
+                console.print(f"    [red]✗ FAIL[/red]  {jr.summary}")
+                for issue in jr.critical_issues:
+                    console.print(f"      [red]↳ [CRITICAL][/red] {issue.location}: {issue.fix}")
+                for issue in jr.minor_issues:
+                    console.print(f"      [yellow]↳ [minor][/yellow] {issue.location}: {issue.fix}")
+
+            # ── Step 5b: Revise if issues found ──────────────────────────────
+            if revise and not jr.passed and jr.issues:
+                console.print(f"    [cyan]↻[/cyan] Revising with critique ({len(jr.issues)} issue(s))...")
+                try:
+                    revised = enrich.enrich_with_critique(
+                        mdx_raw=result.updated,
+                        operation=operation_data,
+                        schemas=schemas,
+                        issues=jr.issues,
+                        model=model,
+                        bedrock=bedrock,
+                    )
+                    result.updated = revised
+                    console.print("    [green]✓[/green] Revision complete")
+
+                    # Confirm with a second judge pass
+                    console.print("    [cyan]⚖[/cyan] Re-judging revised output...")
+                    jr2 = judge_module.judge_file(
+                        mdx_content=revised,
+                        operation=operation_data,
+                        schemas=schemas,
+                        source_context=source_context,
+                        model=judge_model,
+                        bedrock=bedrock,
+                    )
+                    result.judge_result = jr2
+                    if jr2.passed:
+                        any_failed = False
+                        console.print(f"    [green]✓ PASS after revision[/green]  {jr2.summary}")
+                    else:
+                        console.print(f"    [yellow]⚠ Still failing after revision[/yellow]  {jr2.summary}")
+
+                except Exception as e:
+                    console.print(f"    [red]✗ Revision call failed: {e}[/red]")
+
+        if fail_on_issues and any_failed:
+            console.print("\n[red]Judge found issues — exiting with code 1 (--fail-on-issues).[/red]")
+            # Write step runs before exit so diffs are visible
+    else:
+        any_failed = False
+
+    # ── Step 6: Write / diff ─────────────────────────────────────────────────
+    step_num = "6" if run_judge else "5"
+    console.rule(f"[bold blue]Step {step_num} — Writing results")
     write_mdx.write_results(results, dry_run=dry_run, show_diff=not no_diff)
 
     if dry_run:
         console.print("\n[dim]Dry run — no files were modified.[/dim]")
+
+    if run_judge and fail_on_issues and any_failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

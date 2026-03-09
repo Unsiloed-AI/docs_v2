@@ -16,6 +16,7 @@ doc-sync      = "doc_sync.cli.sync:main"
 doc-inventory = "doc_sync.cli.inventory:main"
 doc-coverage  = "doc_sync.cli.coverage:main"
 doc-stub      = "doc_sync.cli.stub:main"
+doc-judge     = "doc_sync.cli.judge:main"
 
 [build-system]
 requires = ["hatchling"]

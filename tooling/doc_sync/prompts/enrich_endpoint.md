@@ -31,10 +31,11 @@ field blocks accurate, and updating code examples so they reflect the current AP
 - The overall structure and narrative of each code example — only update what is inaccurate
 
 ### Code example update style
-- Keep examples minimal and realistic — show only the fields being demonstrated, not every possible field
-- For request examples: use the correct parameter names from the spec; if a parameter was renamed, update it
+- **Never remove a field from an existing code example.** If a field is present in the current example, it must remain — even if it is not visible in the top-level spec schema (it may be a nested or legacy field). Only add or update.
+- For request examples: use the correct parameter names from the spec; if a parameter was renamed, update it everywhere it appears
 - For response examples: update field names and sample values to match the current response schema
 - Use realistic placeholder values: proper UUIDs, plausible filenames, valid enum values from the spec
+- Do not add fields to examples that were not already there unless they are new required parameters
 - Do not add explanatory comments unless they were already there — keep examples clean
 
 ### Description style
@@ -44,6 +45,9 @@ field blocks accurate, and updating code examples so they reflect the current AP
 - For boolean flags, state the default: "Defaults to `true`."
 - For enum params, list the valid values inline: `` `LayoutAnalysis` or `Page` ``
 - No marketing language ("powerful", "seamlessly", "cutting-edge")
+- **NEVER reveal underlying third-party technology**: do not name specific models, libraries, or vendors
+  (e.g. do not write "PaddleOCR", "Surya", "Google Cloud Vision", "vLLM", "Detectron2", "YOLO", etc.).
+  Describe capabilities and behaviour instead (e.g. "higher accuracy for complex layouts").
 
 ### Format rules
 - Preserve the exact frontmatter delimiter `---` on its own lines
