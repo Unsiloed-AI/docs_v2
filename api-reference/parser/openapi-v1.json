@@ -17,10 +17,6 @@
     {
       "url": "https://prod.visionapi.unsiloed.ai",
       "description": "Production"
-    },
-    {
-      "url": "https://dev.visionapi.unsiloed.ai",
-      "description": "Development"
     }
   ],
   "paths": {
@@ -599,19 +595,19 @@
         ]
       }
     },
-    "/parse/{task_id}": {
+    "/parse/{job_id}": {
       "get": {
         "tags": [
           "Parse (Vision-API Compatible)"
         ],
-        "summary": "GET /parse/{task_id}",
+        "summary": "GET /parse/{job_id}",
         "description": "Get the status and results of a processing task.\nReturns task information in Vision-API compatible format.",
         "operationId": "get_parse_task",
         "parameters": [
           {
-            "name": "task_id",
+            "name": "job_id",
             "in": "path",
-            "description": "Task ID returned from create task endpoint",
+            "description": "Job ID returned from create parse endpoint",
             "required": true,
             "schema": {
               "type": "string"

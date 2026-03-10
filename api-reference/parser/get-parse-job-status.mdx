@@ -1,6 +1,6 @@
 ---
 title: "Get Parse Result"
-openapi: "/api-reference/parser/openapi-v1.json GET /parse/{task_id}"
+openapi: "/api-reference/parser/openapi-v1.json GET /parse/{job_id}"
 description: "Check the status and retrieve results of parsing jobs"
 ---
 
@@ -14,7 +14,7 @@ Parsing jobs are processed asynchronously. Use this endpoint to poll for complet
 
 ## Parameters
 
-<ParamField path="task_id" type="string" required>
+<ParamField path="job_id" type="string" required>
   Job ID returned by `POST /parse`.
 </ParamField>
 

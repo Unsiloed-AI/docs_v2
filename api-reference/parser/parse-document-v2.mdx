@@ -125,11 +125,65 @@ The v2 presigned upload endpoint decouples document delivery from job creation. 
   Key-value headers you MUST include in your PUT request. Always includes `Content-Type` set to the MIME type inferred from `file_name`.
 </ResponseField>
 
-## Two-Step Upload Flow
+## Step-by-Step Guide
 
-### Step 1 — Create the job
+### Step 1 — Create the parse job
 
-```bash cURL (Step 1)
+POST to `/v2/parse/upload` with your file name and configuration. The API returns a `job_id` and a short-lived presigned S3 URL.
+
+<CodeGroup>
+
+```python Python
+import requests
+
+API_KEY = "your-api-key"
+BASE_URL = "https://prod.visionapi.unsiloed.ai"
+
+response = requests.post(
+    f"{BASE_URL}/v2/parse/upload",
+    headers={"api-key": API_KEY, "Content-Type": "application/json"},
+    json={
+        "file_name": "report.pdf",
+        "use_high_resolution": True,
+        "segmentation_method": "smart_layout_detection",
+        "ocr_mode": "auto_ocr",
+        "merge_tables": False,
+    },
+)
+response.raise_for_status()
+data = response.json()
+
+job_id = data["job_id"]
+upload_url = data["upload_url"]
+upload_headers = data["upload_headers"]
+
+print(f"Job ID: {job_id}")
+print(f"Upload URL expires: {data['expires_at']}")
+```
+
+```javascript JavaScript
+const API_KEY = "your-api-key";
+const BASE_URL = "https://prod.visionapi.unsiloed.ai";
+
+const response = await fetch(`${BASE_URL}/v2/parse/upload`, {
+  method: "POST",
+  headers: { "api-key": API_KEY, "Content-Type": "application/json" },
+  body: JSON.stringify({
+    file_name: "report.pdf",
+    use_high_resolution: true,
+    segmentation_method: "smart_layout_detection",
+    ocr_mode: "auto_ocr",
+    merge_tables: false,
+  }),
+});
+
+const { job_id, upload_url, upload_headers, expires_at } = await response.json();
+
+console.log(`Job ID: ${job_id}`);
+console.log(`Upload URL expires: ${expires_at}`);
+```
+
+```bash cURL
 curl -X POST https://prod.visionapi.unsiloed.ai/v2/parse/upload \
   -H "api-key: your-api-key" \
   -H "Content-Type: application/json" \
@@ -138,16 +192,18 @@ curl -X POST https://prod.visionapi.unsiloed.ai/v2/parse/upload \
     "use_high_resolution": true,
     "segmentation_method": "smart_layout_detection",
     "ocr_mode": "auto_ocr",
-    "merge_tables": true
+    "merge_tables": false
   }'
 ```
 
-You will receive a response like:
+</CodeGroup>
 
-```json Job Created
+The response contains the presigned URL and required headers:
+
+```json
 {
   "job_id": "a3f1c2d4-7e8b-4a9f-b2c1-123456789abc",
-  "upload_url": "https://unsiloed-bucket.s3.us-east-1.amazonaws.com/uploads/a3f1c2d4-7e8b-4a9f-b2c1-123456789abc/report.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&...",
+  "upload_url": "https://unsiloed-bucket.s3.us-east-1.amazonaws.com/uploads/a3f1c2d4.../report.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&...",
   "expires_at": "2025-10-22T07:06:16Z",
   "upload_method": "PUT",
   "upload_headers": {
@@ -156,17 +212,104 @@ You will receive a response like:
 }
 ```
 
-### Step 2 — Upload directly to S3
+### Step 2 — Upload the file directly to S3
 
-```bash cURL (Step 2)
+Use the `upload_url` and `upload_headers` from the response to PUT your file straight to S3. No API key is needed for this request.
+
+<CodeGroup>
+
+```python Python
+with open("report.pdf", "rb") as f:
+    put_response = requests.put(upload_url, headers=upload_headers, data=f)
+put_response.raise_for_status()
+
+print("Upload complete — job is now queued for processing")
+```
+
+```javascript JavaScript
+import fs from "fs";
+
+const fileBuffer = fs.readFileSync("report.pdf");
+
+const putResponse = await fetch(upload_url, {
+  method: "PUT",
+  headers: upload_headers,
+  body: fileBuffer,
+});
+
+if (!putResponse.ok) {
+  throw new Error(`S3 upload failed: ${putResponse.status}`);
+}
+
+console.log("Upload complete — job is now queued for processing");
+```
+
+```bash cURL
 curl -X PUT "https://unsiloed-bucket.s3.us-east-1.amazonaws.com/..." \
   -H "Content-Type: application/pdf" \
   --data-binary @report.pdf
 ```
 
+</CodeGroup>
+
 <Warning>
-  You must include every header listed in `upload_headers`. A missing `Content-Type` will cause the S3 presigned URL to reject the upload with a `403`.
+  You must include every header listed in `upload_headers`. A missing or mismatched `Content-Type` will cause S3 to reject the upload with a `403`.
 </Warning>
+
+### Step 3 — Poll for results
+
+Once the upload completes, the job transitions from `AwaitingUpload` → `Queued` → `Processing` → `Succeeded`. Poll `GET /parse/{job_id}` using the same endpoint as v1.
+
+<CodeGroup>
+
+```python Python
+import time
+
+while True:
+    status_response = requests.get(
+        f"{BASE_URL}/parse/{job_id}",
+        headers={"api-key": API_KEY},
+    )
+    status_response.raise_for_status()
+    job = status_response.json()
+    print(f"Status: {job['status']}")
+
+    if job["status"] == "Succeeded":
+        print(f"Done! {job['total_chunks']} chunks extracted.")
+        break
+    elif job["status"] == "Failed":
+        raise RuntimeError(f"Job failed: {job.get('message')}")
+
+    time.sleep(5)
+```
+
+```javascript JavaScript
+while (true) {
+  const statusResponse = await fetch(`${BASE_URL}/parse/${job_id}`, {
+    headers: { "api-key": API_KEY },
+  });
+  const job = await statusResponse.json();
+  console.log(`Status: ${job.status}`);
+
+  if (job.status === "Succeeded") {
+    console.log(`Done! ${job.total_chunks} chunks extracted.`);
+    break;
+  } else if (job.status === "Failed") {
+    throw new Error(`Job failed: ${job.message}`);
+  }
+
+  await new Promise((r) => setTimeout(r, 5000));
+}
+```
+
+```bash cURL
+curl -X GET "https://prod.visionapi.unsiloed.ai/parse/{job_id}" \
+  -H "api-key: your-api-key"
+```
+
+</CodeGroup>
+
+See [Get Parse Job Status](/api-reference/parser/get-parse-job-status) for the full response schema.
 
 <RequestExample>
 
