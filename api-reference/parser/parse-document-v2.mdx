@@ -1,0 +1,345 @@
+---
+title: "Parse Document (Presigned Upload)"
+openapi: "/api-reference/parser/openapi-v2.json POST /v2/parse/upload"
+description: "Create a parse job and receive a presigned S3 URL to upload your document directly — no server relay, no file size constraints."
+---
+
+## Overview
+
+The v2 presigned upload endpoint decouples document delivery from job creation. Instead of uploading your file through the API server, you:
+
+1. **POST** to `/v2/parse/upload` with your configuration — the server creates a parse job and returns a short-lived S3 presigned URL.
+2. **PUT** your file directly to S3 using that URL — the server is never in the transfer path.
+3. Once the upload completes, an S3 event automatically enqueues the job for processing.
+4. **Poll** `GET /parse/{job_id}` to track progress and retrieve results — the same endpoint as v1.
+
+<Note>
+  The job status starts as `AwaitingUpload`. It transitions to `Queued` once the S3 upload completes, then to `Processing`, and finally `Succeeded` or `Failed`. See [Get Parse Job Status](/api-reference/parser/get-parse-job-status) for the full response schema and polling examples.
+</Note>
+
+## Request
+
+<ParamField body="file_name" type="string" required>
+  File name including extension (e.g. `"report.pdf"`). Determines the MIME type for the presigned URL. Supported formats: PDF, images (PNG, JPEG, TIFF), and office documents (DOCX, PPTX, XLSX).
+</ParamField>
+
+<ParamField body="use_high_resolution" type="boolean">
+  Use high-resolution images for cropping and post-processing. Defaults to `true`.
+</ParamField>
+
+<ParamField body="segmentation_method" type="string">
+  Layout analysis strategy. `smart_layout_detection` (default) detects fine-grained elements using bounding boxes. `page_by_page` treats each page as a single segment and is faster for simple documents.
+</ParamField>
+
+<ParamField body="ocr_mode" type="string">
+  OCR processing mode. `auto_ocr` (default) applies OCR only where needed. `force_ocr` forces OCR on every text element — recommended for scanned documents.
+</ParamField>
+
+<ParamField body="ocr_engine" type="string">
+  OCR engine to use. `UnsiloedBeta` (default) — handles rotated/warped text and irregular bounding boxes. `UnsiloedHawk` — higher accuracy for complex layouts and mixed content. `UnsiloedStorm` — enterprise-grade accuracy optimized for 50+ languages.
+</ParamField>
+
+<ParamField body="merge_tables" type="boolean">
+  Merge tables that span multiple pages into a single unified structure. Defaults to `false`.
+</ParamField>
+
+<ParamField body="extract_charts" type="boolean">
+  Extract structured data from charts and graphs using the vision model. Defaults to `false`.
+</ParamField>
+
+<ParamField body="detect_checkboxes" type="boolean">
+  Detect and extract checkbox states from forms. Defaults to `false`.
+</ParamField>
+
+<ParamField body="extract_links" type="boolean">
+  Attach hyperlink URLs from PDF annotations to OCR results. Defaults to `false`.
+</ParamField>
+
+<ParamField body="extract_colors" type="boolean">
+  Transfer text color from the PDF text layer to OCR results. Defaults to `false`.
+</ParamField>
+
+<ParamField body="xml_citation" type="boolean">
+  Extract and hyperlink bibliography citations in the markdown output. Defaults to `false`.
+</ParamField>
+
+<ParamField body="page_range" type="string">
+  Restrict processing to a subset of pages. Formats: `"1-5"`, `"2,4,6"`, `"[1,3,5]"`. Defaults to all pages.
+</ParamField>
+
+<ParamField body="expires_in" type="integer">
+  Seconds until the task and its output are deleted.
+</ParamField>
+
+<ParamField body="segment_type_naming" type="string">
+  Segment type naming convention. `Unsiloed` (default) or `Other`.
+</ParamField>
+
+<ParamField body="validate_segments" type="array">
+  Segment types to validate with VLM. Example: `["Table", "Formula"]`.
+</ParamField>
+
+<ParamField body="validate_table_segments" type="boolean">
+  Legacy: validate table segments using VLM. Prefer `validate_segments` instead.
+</ParamField>
+
+<ParamField body="chunk_processing" type="object">
+  JSON object controlling how segments are grouped into chunks. See the v1 parse endpoint for full schema details.
+</ParamField>
+
+<ParamField body="segment_processing" type="object">
+  JSON object controlling per-segment-type processing (HTML/Markdown generation strategy, content source, model). See the v1 parse endpoint for full schema details.
+</ParamField>
+
+<ParamField body="llm_processing" type="object">
+  JSON object for LLM processing configuration.
+</ParamField>
+
+<ParamField body="output_fields" type="object">
+  JSON object controlling which output fields are included in the response.
+</ParamField>
+
+<ParamField body="error_handling" type="string">
+  How to handle per-page errors. `Continue` (default) skips failed pages and continues. `Fail` aborts the entire job on the first error.
+</ParamField>
+
+## Response
+
+<ResponseField name="job_id" type="string">
+  Unique identifier for the parse job. Use this with `GET /parse/{job_id}` to poll status and retrieve results.
+</ResponseField>
+
+<ResponseField name="upload_url" type="string">
+  Presigned S3 PUT URL. PUT your file directly to this URL — no `api-key` header needed for the upload itself. Valid until `expires_at`.
+</ResponseField>
+
+<ResponseField name="expires_at" type="string">
+  RFC 3339 timestamp when `upload_url` expires. Upload must complete before this time.
+</ResponseField>
+
+<ResponseField name="upload_method" type="string">
+  Always `"PUT"`. Use an HTTP PUT request when uploading to `upload_url`.
+</ResponseField>
+
+<ResponseField name="upload_headers" type="object">
+  Key-value headers you MUST include in your PUT request. Always includes `Content-Type` set to the MIME type inferred from `file_name`.
+</ResponseField>
+
+## Two-Step Upload Flow
+
+### Step 1 — Create the job
+
+```bash cURL (Step 1)
+curl -X POST https://prod.visionapi.unsiloed.ai/v2/parse/upload \
+  -H "api-key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "file_name": "report.pdf",
+    "use_high_resolution": true,
+    "segmentation_method": "smart_layout_detection",
+    "ocr_mode": "auto_ocr",
+    "merge_tables": true
+  }'
+```
+
+You will receive a response like:
+
+```json Job Created
+{
+  "job_id": "a3f1c2d4-7e8b-4a9f-b2c1-123456789abc",
+  "upload_url": "https://unsiloed-bucket.s3.us-east-1.amazonaws.com/uploads/a3f1c2d4-7e8b-4a9f-b2c1-123456789abc/report.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&...",
+  "expires_at": "2025-10-22T07:06:16Z",
+  "upload_method": "PUT",
+  "upload_headers": {
+    "Content-Type": "application/pdf"
+  }
+}
+```
+
+### Step 2 — Upload directly to S3
+
+```bash cURL (Step 2)
+curl -X PUT "https://unsiloed-bucket.s3.us-east-1.amazonaws.com/..." \
+  -H "Content-Type: application/pdf" \
+  --data-binary @report.pdf
+```
+
+<Warning>
+  You must include every header listed in `upload_headers`. A missing `Content-Type` will cause the S3 presigned URL to reject the upload with a `403`.
+</Warning>
+
+<RequestExample>
+
+```bash cURL
+# Step 1: Create job and get presigned URL
+RESPONSE=$(curl -s -X POST https://prod.visionapi.unsiloed.ai/v2/parse/upload \
+  -H "api-key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "file_name": "report.pdf",
+    "use_high_resolution": true,
+    "segmentation_method": "smart_layout_detection",
+    "ocr_mode": "auto_ocr",
+    "merge_tables": false
+  }')
+
+JOB_ID=$(echo "$RESPONSE" | jq -r '.job_id')
+UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.upload_url')
+
+# Step 2: Upload file directly to S3
+curl -X PUT "$UPLOAD_URL" \
+  -H "Content-Type: application/pdf" \
+  --data-binary @report.pdf
+
+# Step 3: Poll for results
+curl -X GET "https://prod.visionapi.unsiloed.ai/parse/$JOB_ID" \
+  -H "api-key: your-api-key"
+```
+
+```python Python
+import requests
+import time
+
+API_KEY = "your-api-key"
+BASE_URL = "https://prod.visionapi.unsiloed.ai"
+
+# Step 1: Create job and get presigned URL
+resp = requests.post(
+    f"{BASE_URL}/v2/parse/upload",
+    headers={"api-key": API_KEY, "Content-Type": "application/json"},
+    json={
+        "file_name": "report.pdf",
+        "use_high_resolution": True,
+        "segmentation_method": "smart_layout_detection",
+        "ocr_mode": "auto_ocr",
+        "merge_tables": False,
+    },
+)
+resp.raise_for_status()
+data = resp.json()
+job_id = data["job_id"]
+upload_url = data["upload_url"]
+upload_headers = data["upload_headers"]
+
+print(f"Job created: {job_id}")
+print(f"Upload URL expires: {data['expires_at']}")
+
+# Step 2: Upload file directly to S3
+with open("report.pdf", "rb") as f:
+    put_resp = requests.put(upload_url, headers=upload_headers, data=f)
+put_resp.raise_for_status()
+print("Upload complete — job is now queued for processing")
+
+# Step 3: Poll for results
+while True:
+    status_resp = requests.get(
+        f"{BASE_URL}/parse/{job_id}",
+        headers={"api-key": API_KEY},
+    )
+    status_resp.raise_for_status()
+    job = status_resp.json()
+    print(f"Status: {job['status']}")
+
+    if job["status"] == "Succeeded":
+        print(f"Done! {job['total_chunks']} chunks extracted.")
+        break
+    elif job["status"] == "Failed":
+        raise RuntimeError(f"Job failed: {job.get('message')}")
+
+    time.sleep(5)
+```
+
+```javascript JavaScript
+const API_KEY = "your-api-key";
+const BASE_URL = "https://prod.visionapi.unsiloed.ai";
+
+// Step 1: Create job and get presigned URL
+const createResp = await fetch(`${BASE_URL}/v2/parse/upload`, {
+  method: "POST",
+  headers: { "api-key": API_KEY, "Content-Type": "application/json" },
+  body: JSON.stringify({
+    file_name: "report.pdf",
+    use_high_resolution: true,
+    segmentation_method: "smart_layout_detection",
+    ocr_mode: "auto_ocr",
+    merge_tables: false,
+  }),
+});
+const { job_id, upload_url, upload_headers, expires_at } = await createResp.json();
+console.log(`Job created: ${job_id}, URL expires: ${expires_at}`);
+
+// Step 2: Upload file directly to S3
+const fileBuffer = await fs.promises.readFile("report.pdf");
+await fetch(upload_url, {
+  method: "PUT",
+  headers: upload_headers,
+  body: fileBuffer,
+});
+console.log("Upload complete — job is now queued");
+
+// Step 3: Poll for results
+while (true) {
+  const statusResp = await fetch(`${BASE_URL}/parse/${job_id}`, {
+    headers: { "api-key": API_KEY },
+  });
+  const job = await statusResp.json();
+  console.log(`Status: ${job.status}`);
+
+  if (job.status === "Succeeded") {
+    console.log(`Done! ${job.total_chunks} chunks extracted.`);
+    break;
+  } else if (job.status === "Failed") {
+    throw new Error(`Job failed: ${job.message}`);
+  }
+
+  await new Promise((r) => setTimeout(r, 5000));
+}
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json Success Response
+{
+  "job_id": "a3f1c2d4-7e8b-4a9f-b2c1-123456789abc",
+  "upload_url": "https://unsiloed-bucket.s3.us-east-1.amazonaws.com/uploads/a3f1c2d4.../report.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=...&X-Amz-Date=20251022T065616Z&X-Amz-Expires=900&X-Amz-SignedHeaders=content-type&X-Amz-Signature=...",
+  "expires_at": "2025-10-22T07:06:16Z",
+  "upload_method": "PUT",
+  "upload_headers": {
+    "Content-Type": "application/pdf"
+  }
+}
+```
+
+```json Error Response — Unsupported File Type
+{
+  "error": "Unsupported file type: .exe. Supported extensions: pdf, png, jpg, jpeg, tiff, docx, pptx, xlsx"
+}
+```
+
+```text 429 — Rate Limit Exceeded
+Rate limit exceeded
+```
+
+</ResponseExample>
+
+## Advantages Over v1
+
+| Feature | v1 (`POST /parse`) | v2 (`POST /v2/parse/upload`) |
+|---|---|---|
+| File delivery | Through API server | Direct to S3 |
+| File size limit | Server upload limit | S3 object size limit (5 TB) |
+| Large file performance | Bottlenecked by API server | No server bottleneck |
+| Bandwidth usage | Double (client → server → S3) | Single (client → S3) |
+| Use case | Quick uploads, small files | Large files, high volume |
+
+## Error Handling
+
+| Status | Cause | Action |
+|---|---|---|
+| `400` | Invalid or missing `file_name`, unsupported extension | Fix `file_name` and retry |
+| `401` | Missing or invalid `api-key` (handled by authentication middleware) | Check your API key |
+| `429` | Rate limit exceeded | Back off and retry after 1 second |
+| `403` on S3 PUT | Missing or wrong headers, expired URL | Check `upload_headers`, get a new URL |
+| Job status `Failed` | Processing error | Check `message` field in the status response |

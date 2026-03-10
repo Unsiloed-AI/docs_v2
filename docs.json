@@ -63,7 +63,8 @@
             "group": "Parsing",
             "pages": [
               "api-reference/parser/parse-document",
-              "api-reference/parser/get-parse-job-status"
+              "api-reference/parser/get-parse-job-status",
+              "api-reference/parser/parse-document-v2"
             ]
           },
           {
