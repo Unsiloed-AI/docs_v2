@@ -52,7 +52,7 @@ Keep your API keys secure and never expose them in client-side code or public re
 
 Our core endpoints for converting unstructured data to structured formats:
 
-- **Extraction**: `POST /extract` - Extract structured data using JSON schemas, returns job_id
+- **Extraction**: `POST /v2/extract` - Extract structured data using JSON schemas, returns job_id
 - **Extraction Status**: `GET /extract/{job_id}` - Get extraction results with confidence scores
 - **Parsing**: `POST /parse` - Parse documents into structured chunks with metadata
 - **Parsing Status**: `GET /parse/{job_id}` - Get parsed content with element types

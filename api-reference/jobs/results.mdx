@@ -41,15 +41,24 @@ The response structure depends on the job type (extraction, parsing, classificat
 <ResponseField name="metadata" type="object">
   Job metadata containing:
   - `order`: Array of extracted field names in order
+  - `schema`: The JSON schema used for extraction
   - `page_count`: Number of pages in the document
 </ResponseField>
 
 <ResponseField name="result" type="object">
   The extracted data matching the provided JSON schema. Each field contains:
   - `score`: Confidence score (0-1) for the extraction
-  - `value`: The extracted value
-  - `bboxes`: Array of bounding box objects with `bbox` coordinates
+  - `value`: The extracted value (string for scalar fields, array of objects for array fields)
+  - `bboxes`: Array of bounding box objects containing:
+    - `bbox`: `[x1, y1, x2, y2]` coordinates
+    - `text`: The extracted text snippet
+    - `type`: Detection type (e.g., `"segment"`)
+    - `confidence`: Confidence score for this specific bounding box
+    - `page_width`: Width of the source page in points
+    - `page_height`: Height of the source page in points
   - `page_no`: Page number where the value was found (1-indexed)
+
+  For **array fields**, the `value` is an array of objects, each containing its own `bboxes` and `page_no` alongside the extracted data.
 </ResponseField>
 
 <RequestExample>
@@ -99,45 +108,132 @@ if (response.ok) {
 
 ```json Extraction Results
 {
-  "job_id": "36b2c5dc-942c-4b20-8451-39764246f9aa",
+  "job_id": "36adb597-3c2c-43e8-a259-410553291f47",
   "status": "completed",
-  "file_name": "invoice.pdf",
-  "created_at": "2026-01-19T21:10:51.324693+00:00",
-  "updated_at": "2026-01-19T21:10:55.165642+00:00",
+  "file_name": null,
+  "created_at": "2026-03-10T16:41:58.407237+00:00",
+  "updated_at": "2026-03-10T16:42:26.232009+00:00",
   "metadata": {
-    "order": ["invoice_number", "company_name", "total_amount"],
-    "page_count": 1
+    "order": ["EIN", "Address", "Officers", "Organisation", "telephone_number"],
+    "schema": {
+      "type": "object",
+      "required": ["EIN", "Address", "Officers", "Organisation", "telephone_number"],
+      "properties": {
+        "EIN": {
+          "type": "string",
+          "description": "employee identification number"
+        },
+        "Address": {
+          "type": "string",
+          "description": "Full Address of organisation"
+        },
+        "Officers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["Officers"],
+            "properties": {
+              "Officers": {
+                "type": "string",
+                "description": "List of officers"
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "List of officers"
+        },
+        "Organisation": {
+          "type": "string",
+          "description": "Name of organisation"
+        },
+        "telephone_number": {
+          "type": "string",
+          "description": "telephone number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "page_count": 27
   },
   "result": {
-    "invoice_number": {
-      "score": 0.7970692802977641,
-      "value": "25G1IZT000009999",
+    "EIN": {
+      "score": 0.98,
+      "value": "02-0624253",
       "bboxes": [
         {
-          "bbox": [150, 80, 320, 110]
+          "bbox": [441, 131, 520, 147],
+          "text": "02-0624253",
+          "type": "segment",
+          "confidence": 0.98,
+          "page_width": 672.0,
+          "page_height": 1028.88
         }
       ],
-      "page_no": 1
+      "page_no": 2
     },
-    "company_name": {
-      "score": 0.9945,
-      "value": "Acme Corporation",
+    "Address": {
+      "score": 0.97,
+      "value": "602 S OGDEN ST DENVER, CO 80209",
       "bboxes": [
         {
-          "bbox": [72, 100, 400, 140]
+          "bbox": [84, 201, 181, 216],
+          "text": "602 S OGDEN ST DENVER, CO 80209",
+          "type": "segment",
+          "confidence": 0.97,
+          "page_width": 672.0,
+          "page_height": 1028.88
         }
       ],
-      "page_no": 1
+      "page_no": 2
     },
-    "total_amount": {
-      "score": 0.9876,
-      "value": "1250000",
-      "bboxes": [
+    "Officers": {
+      "score": 0.98,
+      "value": [
         {
-          "bbox": [150, 250, 300, 280]
+          "bboxes": [
+            {
+              "bbox": [0, 446, 107, 465],
+              "type": "segment",
+              "confidence": 0.98,
+              "page_width": 672.0,
+              "page_height": 843.36
+            }
+          ],
+          "page_no": 7,
+          "Officers": "KIMBERLY TROGGIO"
         }
       ],
-      "page_no": 1
+      "page_no": 8
+    },
+    "Organisation": {
+      "score": 0.99,
+      "value": "GLOBAL HUMANITARIAN EXPEDITIONS",
+      "bboxes": [
+        {
+          "bbox": [84, 120, 239, 135],
+          "text": "GLOBAL HUMANITARIAN EXPEDITIONS",
+          "type": "segment",
+          "confidence": 0.99,
+          "page_width": 672.0,
+          "page_height": 1028.88
+        }
+      ],
+      "page_no": 2
+    },
+    "telephone_number": {
+      "score": 0.98,
+      "value": "(303) 858-8857",
+      "bboxes": [
+        {
+          "bbox": [441, 185, 533, 200],
+          "text": "(303) 858-8857",
+          "type": "segment",
+          "confidence": 0.98,
+          "page_width": 672.0,
+          "page_height": 1028.88
+        }
+      ],
+      "page_no": 2
     }
   }
 }
@@ -173,7 +269,7 @@ def process_document_with_results(file_path, schema, api_key):
     data = {"schema_data": json.dumps(schema)}
     
     response = requests.post(
-        "https://prod.visionapi.unsiloed.ai/extract",
+        "https://prod.visionapi.unsiloed.ai/v2/extract",
         files=files,
         data=data,
         headers=headers
@@ -248,17 +344,26 @@ except Exception as e:
 
 Each extracted field in the `result` object contains:
 - `score`: A confidence score between 0 and 1 indicating extraction confidence
-- `value`: The extracted value as a string
+- `value`: The extracted value — a string for scalar fields, or an array of objects for array fields
 - `bboxes`: Array of bounding box objects indicating where the value was found
 - `page_no`: The page number where the value was located (1-indexed)
 
+For **array fields**, the `value` is an array where each element contains:
+- The extracted data fields (matching the schema's item properties)
+- `bboxes`: Bounding boxes specific to that array element
+- `page_no`: Page number for that array element
+
 ### Bounding Box Format
 
-Bounding boxes use the format `[x1, y1, x2, y2]` where:
-- `x1, y1`: Top-left corner coordinates
-- `x2, y2`: Bottom-right corner coordinates
-- Coordinates are in pixels from the top-left of the page
-- Page numbers are 1-indexed
+Each bounding box object contains:
+- `bbox`: `[x1, y1, x2, y2]` coordinates where:
+  - `x1, y1`: Top-left corner coordinates
+  - `x2, y2`: Bottom-right corner coordinates
+- `text`: The extracted text snippet at that location
+- `type`: Detection type (e.g., `"segment"`)
+- `confidence`: Confidence score for this specific bounding box
+- `page_width`: Width of the source page in points
+- `page_height`: Height of the source page in points
 
 ### Confidence Scores
 

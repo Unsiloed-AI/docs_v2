@@ -1,12 +1,12 @@
 ---
 title: "Extract Data"
-openapi: "/api-reference/openapi.json POST /extract"
-description: "Extract structured data from PDF documents using custom schemas for citation and data extraction"
+openapi: "/api-reference/openapi.json POST /v2/extract"
+description: "Extract structured data from PDF documents using custom schemas with vision-language models"
 ---
 
 ## Overview
 
-The Extract Data endpoint processes PDF documents and extracts structured information based on custom schemas. This is ideal for extracting specific data points, citations, references, and structured content from documents using AI-powered analysis.
+The `/v2/extract` endpoint extracts structured data from PDF documents using vision-language models. It supports multiple model tiers, optional bounding box citations, and intelligent page selection for large documents.
 
 <Note>
   The endpoint returns a job ID for asynchronous processing. Use the job management endpoints to check status and retrieve results.
@@ -14,33 +14,26 @@ The Extract Data endpoint processes PDF documents and extracts structured inform
 
 ## Request
 
-<ParamField body="pdf_file" type="file" required>
-  The PDF file to process for data extraction. Maximum file size: 100MB
+<ParamField body="pdf_file" type="file">
+  The PDF file to process for data extraction. Maximum file size: 100MB. Either `pdf_file` or `file_url` must be provided.
+</ParamField>
+
+<ParamField body="file_url" type="string">
+  URL to a PDF file to process. Either `pdf_file` or `file_url` must be provided.
 </ParamField>
 
 <ParamField body="schema_data" type="string" required>
   JSON schema defining the structure and fields to extract from the document. Must be a valid JSON Schema format with type definitions, properties, and required fields.
 </ParamField>
 
-<ParamField body="citation_config" type="string">
-  JSON object controlling citation detail level. Configure what citation references are returned with extracted data.
+<ParamField body="model" type="string" default="gamma">
+  Model tier to use for extraction. Available tiers: `alpha`, `beta`, `gamma`, `delta`.
 
-  **Properties:**
-  - `semantic_citations` (boolean): Enable segment-level citations. Default: `false`
-  - `ocr_citations` (boolean): Enable word-level citations with OCR coordinates. Default: `false`
+  **Recommended: `gamma`** (default) — best balance of accuracy, speed, and cost.
+</ParamField>
 
-  **Example:**
-  ```json
-  {
-    "semantic_citations": true,
-    "ocr_citations": true
-  }
-  ```
-
-  **When to use:**
-  - Set both to `true` for segment-level and word-level citations
-  - Set `semantic_citations: true, ocr_citations: false` for segment-level citations only
-  - Set both to `false` (default) when citations aren't needed
+<ParamField body="enable_citations" type="boolean" default="false">
+  Return bounding box coordinates for extracted values. When enabled, each extracted field includes `bboxes` with precise location data in the source document.
 </ParamField>
 
 ## Response
@@ -78,15 +71,15 @@ Once the job is completed, the results will contain the extracted data with addi
 </ResponseField>
 
 <ResponseField name="[field_name].bboxes" type="array">
-  Array of bounding box coordinates where the data was found in the document. Only included when `semantic_citations` or `ocr_citations` is enabled in citation_config.
+  Array of bounding box coordinates where the data was found in the document. Only included when `enable_citations` is set to `true`.
 </ResponseField>
 
 <ResponseField name="[field_name].bboxes[].bbox" type="array">
-  Bounding box coordinates [x1, y1, x2, y2] in pixels. Only included when citations are enabled.
+  Bounding box coordinates [left, top, right, bottom] in PDF point space. Only included when citations are enabled.
 </ResponseField>
 
 <ResponseField name="[field_name].page_no" type="number">
-  Page number where the data was extracted (1-indexed). Only included when citations are enabled via citation_config.
+  Page number where the data was extracted (1-indexed).
 </ResponseField>
 
 <ResponseField name="min_confidence_score" type="number">
@@ -177,7 +170,7 @@ For a simple financial document schema:
 <RequestExample>
 
 ```bash cURL
-curl -X POST "https://prod.visionapi.unsiloed.ai/extract" \
+curl -X POST "https://prod.visionapi.unsiloed.ai/v2/extract" \
   -H "accept: application/json" \
   -H "api-key: your-api-key" \
   -H "Content-Type: multipart/form-data" \
@@ -189,7 +182,7 @@ curl -X POST "https://prod.visionapi.unsiloed.ai/extract" \
 import requests
 import json
 
-url = "https://prod.visionapi.unsiloed.ai/extract"
+url = "https://prod.visionapi.unsiloed.ai/v2/extract"
 headers = {
     "accept": "application/json",
     "api-key": "your-api-key"
@@ -221,12 +214,11 @@ data = {
     "schema_data": json.dumps(schema)
 }
 
-# Optional: Enable citations if needed
-# citation_config = {
-#     "semantic_citations": True,
-#     "ocr_citations": True
-# }
-# data["citation_config"] = json.dumps(citation_config)
+# Optional: Enable citations
+# data["enable_citations"] = "true"
+
+# Optional: Select model tier (default: gamma)
+# data["model"] = "gamma"
 
 response = requests.post(url, headers=headers, files=files, data=data)
 
@@ -263,14 +255,13 @@ const schema = {
 
 formData.append('schema_data', JSON.stringify(schema));
 
-// Optional: Enable citations if needed
-// const citationConfig = {
-//   semantic_citations: true,
-//   ocr_citations: true
-// };
-// formData.append('citation_config', JSON.stringify(citationConfig));
+// Optional: Enable citations
+// formData.append('enable_citations', 'true');
 
-const response = await fetch('https://prod.visionapi.unsiloed.ai/extract', {
+// Optional: Select model tier (default: gamma)
+// formData.append('model', 'gamma');
+
+const response = await fetch('https://prod.visionapi.unsiloed.ai/v2/extract', {
   method: 'POST',
   headers: {
     'accept': 'application/json',
@@ -285,7 +276,7 @@ if (response.ok) {
   console.log(`Status: ${result.status}`);
   console.log(`Quota remaining: ${result.quota_remaining}`);
 
-  // Poll for job completion using job management endpoints
+  // Poll for job completion using GET /extract/{job_id}
 
 } else {
   console.error('Extraction failed:', response.status, await response.text());
@@ -320,65 +311,54 @@ if (response.ok) {
 
 </ResponseExample>
 
-## Citation Configuration
+## Citations
 
-The `citation_config` parameter controls the level of citation detail returned with extracted data. Citations provide references back to the source document, allowing you to trace where each extracted value was found.
+The `enable_citations` parameter controls whether bounding box coordinates are returned with extracted data. Citations provide references back to the source document, allowing you to trace where each extracted value was found.
 
-### Configuration Options
+### With Citations Enabled
 
-<ParamField body="semantic_citations" type="boolean" default="false">
-  **Enabled (`true`):**
-  - Returns segment-level citations with bounding boxes
-  - Provides contextual text spans for each extracted field
-  - Useful for tracing data back to document sections
+When `enable_citations` is set to `true`, each extracted field includes `bboxes` with precise location data:
 
-  **Disabled (`false`):**
-  - No segment-level citations included
-  - Smaller response payload
-</ParamField>
-
-<ParamField body="ocr_citations" type="boolean" default="false">
-  **Enabled (`true`):**
-  - Returns word-level citations with precise coordinates
-  - Includes OCR-level bounding boxes for individual words
-  - Enables character-level text mapping
-
-  **Disabled (`false`):**
-  - No word-level citations included
-  - Faster processing and smaller response size
-</ParamField>
-
-### Use Cases
-
-**Segment-Level and Word-Level Citations**
 ```json
 {
-  "semantic_citations": true,
-  "ocr_citations": true
+  "invoice_number": {
+    "value": "INV-2025-001",
+    "page_no": 1,
+    "score": 0.97,
+    "bboxes": [
+      {
+        "bbox": [139, 209, 280, 222],
+        "text": "INV-2025-001",
+        "confidence": 0.95,
+        "page_width": 595.0,
+        "page_height": 842.0
+      }
+    ]
+  }
 }
 ```
-Use when you need both segment-level context and word-level precision for detailed auditing or UI highlighting.
 
-**Segment-Level Citations Only**
+**Bbox coordinate system:**
+- `bbox`: `[left, top, right, bottom]` in PDF point space (origin: top-left)
+- Standard A4 page = 595 x 842 points
+- `page_width` / `page_height` included for scaling to any display size
+
+### Without Citations (Default)
+
+When `enable_citations` is `false` (default), the response contains `value`, `score`, and `page_no` for each field without bounding box data:
+
 ```json
 {
-  "semantic_citations": true,
-  "ocr_citations": false
+  "invoice_number": {
+    "value": "INV-2025-001",
+    "page_no": 1,
+    "score": 0.97
+  }
 }
 ```
-Use when you need to trace data back to document sections without word-level detail. Balanced performance with moderate response size.
-
-**No Citations (Values Only)**
-```json
-{
-  "semantic_citations": false,
-  "ocr_citations": false
-}
-```
-Use when you only need extracted values without citation references. Fastest processing with minimal response payload.
 
 <Note>
-When both `semantic_citations` and `ocr_citations` are set to `false` (default), the response will only contain `value` and `score` for each field. The `bboxes` and `page_no` fields will be omitted.
+Set `enable_citations` to `true` when you need to trace extracted values back to their exact location in the document, such as for UI highlighting or audit trails.
 </Note>
 
 ## JSON Schema Definition
@@ -693,7 +673,7 @@ headers = {
 # Poll for job completion
 while True:
     response = requests.get(
-        f"https://prod.visionapi.unsiloed.ai/jobs/{job_id}",
+        f"https://prod.visionapi.unsiloed.ai/extract/{job_id}",
         headers=headers
     )
 

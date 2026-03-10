@@ -20,10 +20,10 @@
     }
   ],
   "paths": {
-    "/extract": {
+    "/v2/extract": {
       "post": {
         "summary": "Extract Data",
-        "description": "Extract structured data from PDF documents using custom schemas for citation and data extraction",
+        "description": "Extract structured data from PDF documents using custom schemas with vision-language models. Supports multiple model tiers, optional bounding box citations, and intelligent page selection for large documents.",
         "requestBody": {
           "required": true,
           "content": {
@@ -34,15 +34,29 @@
                   "pdf_file": {
                     "type": "string",
                     "format": "binary",
-                    "description": "The PDF file to process for data extraction. Maximum file size: 100MB"
+                    "description": "The PDF file to process for data extraction. Maximum file size: 100MB. Either pdf_file or file_url must be provided."
+                  },
+                  "file_url": {
+                    "type": "string",
+                    "description": "URL to a PDF file to process. Either pdf_file or file_url must be provided."
                   },
                   "schema_data": {
                     "type": "string",
                     "description": "JSON schema defining the structure and fields to extract from the document. Example: {\"type\":\"object\",\"properties\":{\"invoice_number\":{\"type\":\"string\",\"description\":\"The invoice number\"}},\"required\":[\"invoice_number\"],\"additionalProperties\":false}"
+                  },
+                  "model": {
+                    "type": "string",
+                    "description": "Model tier to use for extraction. Options: alpha, beta, gamma (default, recommended), delta",
+                    "default": "gamma",
+                    "enum": ["alpha", "beta", "gamma", "delta"]
+                  },
+                  "enable_citations": {
+                    "type": "boolean",
+                    "description": "Return bounding box coordinates for extracted values",
+                    "default": false
                   }
                 },
                 "required": [
-                  "pdf_file",
                   "schema_data"
                 ]
               }
