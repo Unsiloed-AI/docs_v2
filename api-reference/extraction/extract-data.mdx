@@ -1,12 +1,12 @@
 ---
 title: "Extract Data"
 openapi: "/api-reference/openapi.json POST /v2/extract"
-description: "Extract structured data from PDF documents using custom schemas with vision-language models"
+description: "Extract structured data from PDF documents using custom schemas"
 ---
 
 ## Overview
 
-The `/v2/extract` endpoint extracts structured data from PDF documents using vision-language models. It supports multiple model tiers, optional bounding box citations, and intelligent page selection for large documents.
+The `/v2/extract` endpoint extracts structured data from PDF documents. It supports optional bounding box citations and handles large documents efficiently.
 
 <Note>
   The endpoint returns a job ID for asynchronous processing. Use the job management endpoints to check status and retrieve results.
@@ -29,7 +29,7 @@ The `/v2/extract` endpoint extracts structured data from PDF documents using vis
 <ParamField body="model" type="string" default="gamma">
   Model tier to use for extraction. Available tiers: `alpha`, `beta`, `gamma`, `delta`.
 
-  **Recommended: `gamma`** (default) — best balance of accuracy, speed, and cost.
+  **Recommended: `gamma`** (default) — best balance of accuracy and speed.
 </ParamField>
 
 <ParamField body="enable_citations" type="boolean" default="false">
