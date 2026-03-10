@@ -24,12 +24,12 @@ This API provides powerful document processing capabilities using Vision models 
   </Card>
 </CardGroup>
 
-## Getting Started with the /extract Endpoint
+## Getting Started with the /v2/extract Endpoint
 
 Here are the steps to get started:
 
 1. **Get an API Key** - [Sign up on Unsiloed AI](https://cal.com/aman-mishra-p0ry57/15min) to get API access
-2. **Define a JSON Schema** - Specify the fields you want to extract. In the Unsiloed AI Platform, you can directly generate a JSON schema through the UI and export that schema as an endpoint to call the `/extract` endpoint
+2. **Define a JSON Schema** - Specify the fields you want to extract. In the Unsiloed AI Platform, you can directly generate a JSON schema through the UI and export that schema as an endpoint to call the `/v2/extract` endpoint
 
 ## Defining Extraction Schemas
 
@@ -550,7 +550,7 @@ runExtraction().catch(console.error);
 ```
 
 ```bash cURL
-curl -X POST "https://prod.visionapi.unsiloed.ai/extract" \
+curl -X POST "https://prod.visionapi.unsiloed.ai/v2/extract" \
   -H "accept: application/json" \
   -H "api-key: your-api-key" \
   -H "Content-Type: multipart/form-data" \
@@ -628,7 +628,7 @@ console.log(result);
 
 ```bash cURL
 # Start async extraction job
-curl -X POST "https://prod.visionapi.unsiloed.ai/extract" \
+curl -X POST "https://prod.visionapi.unsiloed.ai/v2/extract" \
   -H "api-key: your-api-key" \
   -F "pdf_file=@document.pdf" \
   -F 'schema_data={"type":"object","properties":{"title":{"type":"string"}},"required":["title"],"additionalProperties":false}'

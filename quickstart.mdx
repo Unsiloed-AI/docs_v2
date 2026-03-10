@@ -210,7 +210,7 @@ cat > schema.json << 'EOF'
 EOF
 
 # Submit extraction request (passing schema as string, not file)
-curl -X POST "https://prod.visionapi.unsiloed.ai/extract" \
+curl -X POST "https://prod.visionapi.unsiloed.ai/v2/extract" \
   -H "api-key: your-api-key" \
   -F "pdf_file=@Invoice.pdf" \
   -F "schema_data=$(cat schema.json)"
