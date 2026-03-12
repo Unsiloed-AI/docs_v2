@@ -14,7 +14,7 @@ The PDF Editor endpoint allows you to modify PDF documents by replacing text and
 <CodeGroup>
 
 ```bash cURL
-curl -X POST "https://dev.platformbackend.unsiloed.ai/api/v1/pdf-editor/edit/reparse" \
+curl -X POST "https://platformbackend.unsiloed.ai/api/v1/pdf-editor/edit/reparse" \
   -H "api-key: your-api-key" \
   -F "file=@test.pdf" \
   -F 'edit_request={
@@ -33,7 +33,7 @@ curl -X POST "https://dev.platformbackend.unsiloed.ai/api/v1/pdf-editor/edit/rep
 import requests
 import json
 
-url = "https://dev.platformbackend.unsiloed.ai/api/v1/pdf-editor/edit/reparse"
+url = "https://platformbackend.unsiloed.ai/api/v1/pdf-editor/edit/reparse"
 headers = {
     "api-key": "your-api-key"
 }
@@ -106,7 +106,7 @@ const editRequest = {
 
 formData.append('edit_request', JSON.stringify(editRequest));
 
-const response = await fetch('https://dev.platformbackend.unsiloed.ai/api/v1/pdf-editor/edit/reparse', {
+const response = await fetch('https://platformbackend.unsiloed.ai/api/v1/pdf-editor/edit/reparse', {
   method: 'POST',
   headers: {
     'api-key': 'your-api-key'
@@ -134,7 +134,7 @@ When working with image replacements, you can upload image files directly:
 import requests
 import json
 
-url = "https://dev.platformbackend.unsiloed.ai/api/v1/pdf-editor/edit/reparse"
+url = "https://platformbackend.unsiloed.ai/api/v1/pdf-editor/edit/reparse"
 headers = {"api-key": "your-api-key"}
 
 # Prepare edit request with image file reference
