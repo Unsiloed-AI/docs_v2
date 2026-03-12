@@ -1,16 +1,16 @@
 ---
 title: "Parse Document (Presigned Upload)"
 openapi: "/api-reference/parser/openapi-v2.json POST /v2/parse/upload"
-description: "Create a parse job and receive a presigned S3 URL to upload your document directly — no server relay, no file size constraints."
+description: "Create a parse job and receive a presigned URL to upload your document directly — no server relay, no file size constraints."
 ---
 
 ## Overview
 
 The v2 presigned upload endpoint decouples document delivery from job creation. Instead of uploading your file through the API server, you:
 
-1. **POST** to `/v2/parse/upload` with your configuration — the server creates a parse job and returns a short-lived S3 presigned URL.
-2. **PUT** your file directly to S3 using that URL — the server is never in the transfer path.
-3. Once the upload completes, an S3 event automatically enqueues the job for processing.
+1. **POST** to `/v2/parse/upload` with your configuration — the API creates a parse job and returns a short-lived presigned URL.
+2. **PUT** your file directly to the presigned URL — the API server is never in the transfer path.
+3. Once the upload completes, the job is automatically enqueued for processing.
 4. **Poll** `GET /parse/{job_id}` to track progress and retrieve results — the same endpoint as v1.
 
 <Tip>
@@ -114,7 +114,7 @@ The v2 presigned upload endpoint decouples document delivery from job creation. 
 </ResponseField>
 
 <ResponseField name="upload_url" type="string">
-  Presigned S3 PUT URL. PUT your file directly to this URL — no `api-key` header needed for the upload itself. Valid until `expires_at`.
+  Presigned PUT URL. Upload your file directly to this URL — no `api-key` header needed for the upload itself. Valid until `expires_at`.
 </ResponseField>
 
 <ResponseField name="expires_at" type="string">
@@ -133,7 +133,7 @@ The v2 presigned upload endpoint decouples document delivery from job creation. 
 
 ### Step 1 — Create the parse job
 
-POST to `/v2/parse/upload` with your file name and configuration. The API returns a `job_id` and a short-lived presigned S3 URL.
+POST to `/v2/parse/upload` with your file name and configuration. The API returns a `job_id` and a short-lived presigned URL.
 
 <CodeGroup>
 
@@ -207,7 +207,7 @@ The response contains the presigned URL and required headers:
 ```json
 {
   "job_id": "a3f1c2d4-7e8b-4a9f-b2c1-123456789abc",
-  "upload_url": "https://unsiloed-bucket.s3.us-east-1.amazonaws.com/uploads/a3f1c2d4.../report.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&...",
+  "upload_url": "https://upload.visionapi.unsiloed.ai/uploads/a3f1c2d4.../report.pdf?signature=...",
   "expires_at": "2025-10-22T07:06:16Z",
   "upload_method": "PUT",
   "upload_headers": {
@@ -216,9 +216,9 @@ The response contains the presigned URL and required headers:
 }
 ```
 
-### Step 2 — Upload the file directly to S3
+### Step 2 — Upload the file
 
-Use the `upload_url` and `upload_headers` from the response to PUT your file straight to S3. No API key is needed for this request.
+Use the `upload_url` and `upload_headers` from the response to PUT your file. No API key is needed for this request.
 
 <CodeGroup>
 
@@ -242,14 +242,14 @@ const putResponse = await fetch(upload_url, {
 });
 
 if (!putResponse.ok) {
-  throw new Error(`S3 upload failed: ${putResponse.status}`);
+  throw new Error(`Upload failed: ${putResponse.status}`);
 }
 
 console.log("Upload complete — job is now queued for processing");
 ```
 
 ```bash cURL
-curl -X PUT "https://unsiloed-bucket.s3.us-east-1.amazonaws.com/..." \
+curl -X PUT "$UPLOAD_URL" \
   -H "Content-Type: application/pdf" \
   --data-binary @report.pdf
 ```
@@ -257,7 +257,7 @@ curl -X PUT "https://unsiloed-bucket.s3.us-east-1.amazonaws.com/..." \
 </CodeGroup>
 
 <Warning>
-  You must include every header listed in `upload_headers`. A missing or mismatched `Content-Type` will cause S3 to reject the upload with a `403`.
+  You must include every header listed in `upload_headers`. A missing or mismatched `Content-Type` will cause the upload to be rejected with a `403`.
 </Warning>
 
 ### Step 3 — Poll for results
@@ -333,7 +333,7 @@ RESPONSE=$(curl -s -X POST https://prod.visionapi.unsiloed.ai/v2/parse/upload \
 JOB_ID=$(echo "$RESPONSE" | jq -r '.job_id')
 UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.upload_url')
 
-# Step 2: Upload file directly to S3
+# Step 2: Upload file
 curl -X PUT "$UPLOAD_URL" \
   -H "Content-Type: application/pdf" \
   --data-binary @report.pdf
@@ -371,7 +371,7 @@ upload_headers = data["upload_headers"]
 print(f"Job created: {job_id}")
 print(f"Upload URL expires: {data['expires_at']}")
 
-# Step 2: Upload file directly to S3
+# Step 2: Upload file
 with open("report.pdf", "rb") as f:
     put_resp = requests.put(upload_url, headers=upload_headers, data=f)
 put_resp.raise_for_status()
@@ -415,7 +415,7 @@ const createResp = await fetch(`${BASE_URL}/v2/parse/upload`, {
 const { job_id, upload_url, upload_headers, expires_at } = await createResp.json();
 console.log(`Job created: ${job_id}, URL expires: ${expires_at}`);
 
-// Step 2: Upload file directly to S3
+// Step 2: Upload file
 const fileBuffer = await fs.promises.readFile("report.pdf");
 await fetch(upload_url, {
   method: "PUT",
@@ -450,7 +450,7 @@ while (true) {
 ```json Success Response
 {
   "job_id": "a3f1c2d4-7e8b-4a9f-b2c1-123456789abc",
-  "upload_url": "https://unsiloed-bucket.s3.us-east-1.amazonaws.com/uploads/a3f1c2d4.../report.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=...&X-Amz-Date=20251022T065616Z&X-Amz-Expires=900&X-Amz-SignedHeaders=content-type&X-Amz-Signature=...",
+  "upload_url": "https://upload.visionapi.unsiloed.ai/uploads/a3f1c2d4.../report.pdf?signature=...",
   "expires_at": "2025-10-22T07:06:16Z",
   "upload_method": "PUT",
   "upload_headers": {
@@ -471,15 +471,15 @@ Rate limit exceeded
 
 </ResponseExample>
 
-## Advantages Over v1
+## Why Use v2
 
 | Feature | v1 (`POST /parse`) | v2 (`POST /v2/parse/upload`) |
 |---|---|---|
-| File delivery | Through API server | Direct to S3 |
-| File size limit | Server upload limit | S3 object size limit (5 TB) |
-| Large file performance | Bottlenecked by API server | No server bottleneck |
-| Bandwidth usage | Double (client → server → S3) | Single (client → S3) |
-| Use case | Quick uploads, small files | Large files, high volume |
+| File delivery | Through API server | Direct via presigned URL |
+| Max file size | Limited by server upload | Up to 5 TB |
+| Upload speed | Bottlenecked by API server | Full client bandwidth |
+| Concurrency | Shared server capacity | No server contention |
+| Best for | Quick uploads, small files | Large files, high volume |
 
 ## Error Handling
 
@@ -488,5 +488,5 @@ Rate limit exceeded
 | `400` | Invalid or missing `file_name`, unsupported extension | Fix `file_name` and retry |
 | `401` | Missing or invalid `api-key` (handled by authentication middleware) | Check your API key |
 | `429` | Rate limit exceeded | Back off and retry after 1 second |
-| `403` on S3 PUT | Missing or wrong headers, expired URL | Check `upload_headers`, get a new URL |
+| `403` on upload | Missing or wrong headers, expired URL | Check `upload_headers`, get a new URL |
 | Job status `Failed` | Processing error | Check `message` field in the status response |
