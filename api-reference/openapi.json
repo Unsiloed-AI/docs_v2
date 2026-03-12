@@ -367,7 +367,7 @@
         "description": "Edit PDF documents by replacing text and images at specific bounding boxes with automatic re-parsing",
         "servers": [
           {
-            "url": "https://dev.platformbackend.unsiloed.ai/api/v1",
+            "url": "https://platformbackend.unsiloed.ai/api/v1",
             "description": "Platform Backend Development"
           }
         ],
@@ -758,7 +758,7 @@
         "description": "Get organization usage information including current usage, monthly limit, and remaining quota",
         "servers": [
           {
-            "url": "https://dev.platformbackend.unsiloed.ai/api/v1",
+            "url": "https://platformbackend.unsiloed.ai/api/v1",
             "description": "Platform Backend"
           }
         ],
