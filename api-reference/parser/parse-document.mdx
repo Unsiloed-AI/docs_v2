@@ -12,6 +12,10 @@ The Parse Document endpoint processes PDFs, images (PNG, JPEG, TIFF), and office
   This endpoint returns a job ID for asynchronous processing. Use the GET PARSE JOB STATUS endpoint to check status and retrieve results when processing is complete.
 </Note>
 
+<Tip>
+  Processing large files or running many requests in parallel? The [Presigned Upload endpoint](/api-reference/parser/parse-document-v2) (`POST /v2/parse/upload`) supports faster uploads, larger file sizes, and higher throughput.
+</Tip>
+
 ## Request
 
 <Note>
@@ -44,15 +48,14 @@ The Parse Document endpoint processes PDFs, images (PNG, JPEG, TIFF), and office
 
 <ParamField body="ocr_engine" type="string">
   OCR engine to use for text recognition:
-  - `"UnsiloedBeta"` (default): handles rotated/warped text and irregular bounding boxes.
-  - `"UnsiloedHawk"`: higher accuracy for complex layouts and mixed content.
+  - `"UnsiloedHawk"` (default): higher accuracy for complex layouts and mixed content.
+  - `"UnsiloedBeta"`: handles rotated/warped text and irregular bounding boxes.
   - `"UnsiloedStorm"`: enterprise-grade accuracy optimized for 50+ languages.
 </ParamField>
 
 <ParamField body="merge_tables" type="boolean">
   Merge tables that span multiple pages into a single unified structure. Defaults to `false`.
 </ParamField>
-
 
 <ParamField body="validate_table_segments" type="boolean">
   Legacy: validate table segment classifications using VLM. Prefer `validate_segments: ["Table"]` instead. Defaults to `false`.
@@ -133,10 +136,6 @@ The Parse Document endpoint processes PDFs, images (PNG, JPEG, TIFF), and office
 
 <ParamField body="llm_processing" type="string">
   JSON object for LLM processing configuration.
-</ParamField>
-
-<ParamField body="validate_segments" type="string">
-  JSON array of segment types to validate using VLM (Vision Language Model). When specified, the listed segment types are validated and corrected for misclassifications. Pass as a JSON-encoded string array. Example: `'["Table","Picture","Formula"]'`. Supported segment types: `Table`, `Picture`, `Formula`.
 </ParamField>
 
 
@@ -700,7 +699,6 @@ The `content_source` parameter determines which field's value will be used to po
 
 <ResponseField name="merge_tables" type="boolean" required>
   Whether table merging is enabled for this job (reflects the submitted `merge_tables` value).
-
 </ResponseField>
 
 ## Document Analysis Features
@@ -750,6 +748,7 @@ curl -X 'POST' \
   -F 'use_high_resolution=true' \
   -F 'segmentation_method=smart_layout_detection' \
   -F 'ocr_mode=auto_ocr' \
+  -F 'ocr_engine=UnsiloedHawk' \
   -F 'validate_table_segments=false' \
   -F 'merge_tables=true' \
   -F 'keep_segment_types=all' \
@@ -781,6 +780,7 @@ data = {
     "use_high_resolution": "true",
     "segmentation_method": "smart_layout_detection",
     "ocr_mode": "auto_ocr",
+    "ocr_engine": "UnsiloedHawk",
     "merge_tables": "true",
     "keep_segment_types": "all",
     "validate_table_segments": "false",
@@ -880,6 +880,7 @@ if (fileInput.files[0]) {
 formData.append('use_high_resolution', 'true');
 formData.append('segmentation_method', 'smart_layout_detection');
 formData.append('ocr_mode', 'auto_ocr');
+formData.append('ocr_engine', 'UnsiloedHawk');
 formData.append('validate_table_segments', 'false');
 formData.append('merge_tables', 'true');
 formData.append('keep_segment_types', 'all');

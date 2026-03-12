@@ -13,14 +13,18 @@ The v2 presigned upload endpoint decouples document delivery from job creation. 
 3. Once the upload completes, an S3 event automatically enqueues the job for processing.
 4. **Poll** `GET /parse/{job_id}` to track progress and retrieve results — the same endpoint as v1.
 
+<Tip>
+  This is the recommended endpoint for large files and high-throughput workloads. It supports faster uploads, larger file sizes, and higher concurrency than the standard [Parse Document](/api-reference/parser/parse-document) endpoint.
+</Tip>
+
 <Note>
-  The job status starts as `AwaitingUpload`. It transitions to `Queued` once the S3 upload completes, then to `Processing`, and finally `Succeeded` or `Failed`. See [Get Parse Job Status](/api-reference/parser/get-parse-job-status) for the full response schema and polling examples.
+  The job status starts as `AwaitingUpload`. It transitions to `Queued` once the upload completes, then to `Processing`, and finally `Succeeded` or `Failed`. See [Get Parse Job Status](/api-reference/parser/get-parse-job-status) for the full response schema and polling examples.
 </Note>
 
 ## Request
 
 <ParamField body="file_name" type="string" required>
-  File name including extension (e.g. `"report.pdf"`). Determines the MIME type for the presigned URL. Supported formats: PDF, images (PNG, JPEG, TIFF), and office documents (DOCX, PPTX, XLSX).
+  File name with extension (e.g. `"report.pdf"`). Determines the MIME type for the presigned URL. Supported formats: PDF, images (PNG, JPEG, TIFF), and office documents (DOCX, PPTX, XLSX).
 </ParamField>
 
 <ParamField body="use_high_resolution" type="boolean">
@@ -76,7 +80,7 @@ The v2 presigned upload endpoint decouples document delivery from job creation. 
 </ParamField>
 
 <ParamField body="validate_segments" type="array">
-  Segment types to validate with VLM. Example: `["Table", "Formula"]`.
+  JSON array of segment types to validate with VLM. Example: `["Table", "Formula"]`.
 </ParamField>
 
 <ParamField body="validate_table_segments" type="boolean">
