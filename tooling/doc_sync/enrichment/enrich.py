@@ -11,16 +11,11 @@ from pathlib import Path
 from typing import Any
 
 import anthropic
-from dotenv import load_dotenv
 
-# Load .env from the tooling directory (docs_v2/tooling/.env)
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
+from doc_sync import config
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 _SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "enrich_endpoint.md"
-
-_BEDROCK_DEFAULT_MODEL = "us.anthropic.claude-opus-4-5-20251101-v1:0"
-_BEDROCK_REGION = "us-east-1"
 
 
 def _load_system_prompt() -> str:
@@ -81,9 +76,17 @@ def _find_refs(obj: Any, refs: set[str]) -> None:
             _find_refs(item, refs)
 
 
-def _make_client(bedrock: bool = False) -> anthropic.Anthropic | anthropic.AnthropicBedrock:
+def _make_client(
+    bedrock: bool = False,
+    vertex: bool = False,
+) -> anthropic.Anthropic | anthropic.AnthropicBedrock | anthropic.AnthropicVertex:
+    if vertex:
+        return anthropic.AnthropicVertex(
+            project_id=config.VERTEX_PROJECT,
+            region=config.VERTEX_REGION,
+        )
     if bedrock:
-        return anthropic.AnthropicBedrock(aws_region=_BEDROCK_REGION)
+        return anthropic.AnthropicBedrock(aws_region=config.BEDROCK_REGION)
     return anthropic.Anthropic()
 
 
@@ -93,16 +96,16 @@ def enrich_file(
     schemas: dict[str, Any],
     model: str = "claude-sonnet-4-6",
     bedrock: bool = False,
+    vertex: bool = False,
 ) -> str:
     """
     Call Claude to update the MDX file based on the current spec.
     Returns the full updated MDX string.
 
     Set bedrock=True to route via Amazon Bedrock using the current AWS credentials.
-    When bedrock=True the model should be a Bedrock inference profile ID such as
-    "us.anthropic.claude-opus-4-6-v1".
+    Set vertex=True to route via Google Cloud Vertex AI (uses GOOGLE_APPLICATION_CREDENTIALS).
     """
-    client = _make_client(bedrock=bedrock)
+    client = _make_client(bedrock=bedrock, vertex=vertex)
     system_prompt = _load_system_prompt()
     user_message = _build_user_message(mdx_raw, operation, schemas)
 
@@ -132,6 +135,7 @@ def enrich_with_critique(
     issues: list[Any],
     model: str = "claude-sonnet-4-6",
     bedrock: bool = False,
+    vertex: bool = False,
 ) -> str:
     """
     Second-pass enrichment: send the current MDX + spec + judge critique back
@@ -159,7 +163,7 @@ def enrich_with_critique(
         + critique_block
     )
 
-    client = _make_client(bedrock=bedrock)
+    client = _make_client(bedrock=bedrock, vertex=vertex)
     system_prompt = _load_system_prompt()
 
     message = client.messages.create(

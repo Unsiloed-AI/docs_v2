@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Claude-powered API documentation sync tooling for any Mintlify docs site"
 requires-python = ">=3.11"
 dependencies = [
-    "anthropic[bedrock]>=0.40.0",
+    "anthropic[bedrock,vertex]>=0.40.0",
     "python-frontmatter>=1.1.0",
     "click>=8.1.0",
     "rich>=13.0.0",

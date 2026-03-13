@@ -79,6 +79,12 @@ console = Console()
     help="Route requests via Amazon Bedrock.",
 )
 @click.option(
+    "--vertex",
+    is_flag=True,
+    default=False,
+    help="Route requests via Google Cloud Vertex AI (uses GOOGLE_APPLICATION_CREDENTIALS).",
+)
+@click.option(
     "--fail-on-issues",
     is_flag=True,
     default=False,
@@ -91,12 +97,22 @@ def main(
     target_file: str | None,
     model: str | None,
     bedrock: bool,
+    vertex: bool,
     fail_on_issues: bool,
 ) -> None:
-    from doc_sync.judge.judge import _DEFAULT_JUDGE_MODEL, _BEDROCK_JUDGE_MODEL
+    from doc_sync import config
+
+    if bedrock and vertex:
+        console.print("[red]Cannot use both --bedrock and --vertex.[/red]")
+        raise SystemExit(1)
 
     if model is None:
-        model = _BEDROCK_JUDGE_MODEL if bedrock else _DEFAULT_JUDGE_MODEL
+        if vertex:
+            model = config.VERTEX_JUDGE_MODEL
+        elif bedrock:
+            model = config.BEDROCK_JUDGE_MODEL
+        else:
+            model = "claude-opus-4-6"
 
     spec_path = Path(spec).resolve()
     docs_path = Path(docs_root).resolve()
@@ -164,6 +180,7 @@ def main(
                 source_context=source_context,
                 model=model,
                 bedrock=bedrock,
+                vertex=vertex,
             )
         except Exception as e:
             console.print(f"    [red]✗ Judge call failed: {e}[/red]")

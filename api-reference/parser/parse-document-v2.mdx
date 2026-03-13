@@ -1,7 +1,7 @@
 ---
 title: "Parse Document (Presigned Upload)"
 openapi: "/api-reference/parser/openapi-v2.json POST /v2/parse/upload"
-description: "Create a parse job and receive a presigned URL to upload your document directly — no server relay, no file size constraints."
+description: "Create a parse job and receive a presigned URL to upload your document directly — supports larger file sizes than the standard endpoint."
 ---
 
 ## Overview
@@ -48,7 +48,7 @@ The v2 presigned upload endpoint decouples document delivery from job creation. 
 </ParamField>
 
 <ParamField body="extract_charts" type="boolean">
-  Extract structured data from charts and graphs using the vision model. Defaults to `false`.
+  Extract structured data from charts and graphs. Defaults to `false`.
 </ParamField>
 
 <ParamField body="detect_checkboxes" type="boolean">
@@ -476,7 +476,7 @@ Rate limit exceeded
 | Feature | v1 (`POST /parse`) | v2 (`POST /v2/parse/upload`) |
 |---|---|---|
 | File delivery | Through API server | Direct via presigned URL |
-| Max file size | Limited by server upload | Up to 5 TB |
+| Max file size | Limited by server upload | Up to 5 GB via direct PUT |
 | Upload speed | Bottlenecked by API server | Full client bandwidth |
 | Concurrency | Shared server capacity | No server contention |
 | Best for | Quick uploads, small files | Large files, high volume |
@@ -488,5 +488,6 @@ Rate limit exceeded
 | `400` | Invalid or missing `file_name`, unsupported extension | Fix `file_name` and retry |
 | `401` | Missing or invalid `api-key` (handled by authentication middleware) | Check your API key |
 | `429` | Rate limit exceeded | Back off and retry after 1 second |
+| `503` | Job queue is at capacity | Back off and retry after the `Retry-After` header value |
 | `403` on upload | Missing or wrong headers, expired URL | Check `upload_headers`, get a new URL |
 | Job status `Failed` | Processing error | Check `message` field in the status response |

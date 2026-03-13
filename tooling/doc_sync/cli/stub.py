@@ -25,7 +25,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import anthropic
 import click
 from rich.console import Console
 
@@ -94,6 +93,12 @@ def _load_prompt() -> str:
     default=False,
     help="Route requests via Amazon Bedrock using the current AWS credentials.",
 )
+@click.option(
+    "--vertex",
+    is_flag=True,
+    default=False,
+    help="Route requests via Google Cloud Vertex AI (uses GOOGLE_APPLICATION_CREDENTIALS).",
+)
 def main(
     spec: str,
     docs_root: str,
@@ -102,10 +107,22 @@ def main(
     dry_run: bool,
     model: str | None,
     bedrock: bool,
+    vertex: bool,
 ) -> None:
-    from doc_sync.enrichment.enrich import _BEDROCK_DEFAULT_MODEL
+    from doc_sync import config
+    from doc_sync.enrichment.enrich import _make_client
+
+    if bedrock and vertex:
+        console.print("[red]Cannot use both --bedrock and --vertex.[/red]")
+        raise SystemExit(1)
+
     if model is None:
-        model = _BEDROCK_DEFAULT_MODEL if bedrock else "claude-sonnet-4-6"
+        if vertex:
+            model = config.VERTEX_MODEL
+        elif bedrock:
+            model = config.BEDROCK_MODEL
+        else:
+            model = "claude-sonnet-4-6"
     spec_path = Path(spec).resolve()
     docs_path = Path(docs_root).resolve()
 
@@ -154,10 +171,7 @@ def main(
     )
 
     try:
-        if bedrock:
-            client = anthropic.AnthropicBedrock(aws_region="us-east-1")
-        else:
-            client = anthropic.Anthropic()
+        client = _make_client(bedrock=bedrock, vertex=vertex)
         message = client.messages.create(
             model=model,
             max_tokens=8192,

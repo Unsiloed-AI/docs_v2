@@ -15,11 +15,10 @@ from typing import Any
 
 import anthropic
 
+from doc_sync import config
+
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 _JUDGE_PROMPT_PATH = _PROMPTS_DIR / "judge_endpoint.md"
-
-_DEFAULT_JUDGE_MODEL = "claude-opus-4-6"
-_BEDROCK_JUDGE_MODEL = "us.anthropic.claude-opus-4-6-20250514-v1:0"
 
 # Temperature 0.1: deterministic enough for reproducibility, preserves reasoning quality
 _JUDGE_TEMPERATURE = 0.1
@@ -135,10 +134,17 @@ def _parse_judge_response(raw: str) -> tuple[str, dict[str, Any]]:
     return reasoning, verdict
 
 
-def _make_client(bedrock: bool) -> anthropic.Anthropic | anthropic.AnthropicBedrock:
+def _make_client(
+    bedrock: bool = False,
+    vertex: bool = False,
+) -> anthropic.Anthropic | anthropic.AnthropicBedrock | anthropic.AnthropicVertex:
+    if vertex:
+        return anthropic.AnthropicVertex(
+            project_id=config.VERTEX_PROJECT,
+            region=config.VERTEX_REGION,
+        )
     if bedrock:
-        from doc_sync.enrichment.enrich import _BEDROCK_REGION
-        return anthropic.AnthropicBedrock(aws_region=_BEDROCK_REGION)
+        return anthropic.AnthropicBedrock(aws_region=config.BEDROCK_REGION)
     return anthropic.Anthropic()
 
 
@@ -147,8 +153,9 @@ def judge_file(
     operation: dict[str, Any],
     schemas: dict[str, Any],
     source_context: str = "",
-    model: str = _DEFAULT_JUDGE_MODEL,
+    model: str = "claude-opus-4-6",
     bedrock: bool = False,
+    vertex: bool = False,
 ) -> JudgeResult:
     """
     Run the LLM judge on an MDX file and return a structured JudgeResult.
@@ -157,7 +164,7 @@ def judge_file(
     verdict="fail" and a single meta-issue describing the failure — so the
     caller always gets a usable object back.
     """
-    client = _make_client(bedrock)
+    client = _make_client(bedrock=bedrock, vertex=vertex)
     system_prompt = _load_system_prompt()
     user_message = _build_user_message(mdx_content, operation, schemas, source_context)
 
