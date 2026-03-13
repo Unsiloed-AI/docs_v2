@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Unsiloed Parser API — v2",
-    "description": "Presigned S3 upload API. The client uploads the file directly to S3 — the server is never in the file transfer path. This eliminates the 68s connection hold time that caused 503 errors at scale. Poll GET /parse/{job_id} (same as v1) to track job status.",
+    "description": "Direct upload API. The client uploads the file directly using a presigned URL — the server is never in the file transfer path. Use GET /parse/{job_id} (v1 endpoint) to poll job status.",
     "contact": {
       "name": "Unsiloed",
       "url": "https://unsiloed.ai",
@@ -20,91 +20,6 @@
     }
   ],
   "paths": {
-    "/parse/{job_id}": {
-      "get": {
-        "tags": [
-          "Parse (Vision-API Compatible)"
-        ],
-        "summary": "GET /parse/{job_id}",
-        "description": "Get the status and results of a processing task.\nReturns task information in Vision-API compatible format.",
-        "operationId": "get_parse_task",
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "description": "Job ID returned from create parse endpoint",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "base64_urls",
-            "in": "query",
-            "description": "Whether to return base64 encoded URLs",
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "include_chunks",
-            "in": "query",
-            "description": "Whether to include chunks in output",
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "output_file",
-            "in": "query",
-            "description": "Whether to return presigned URL to output file",
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Task details and results",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Task not found",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "api_key": []
-          }
-        ]
-      }
-    },
     "/v2/parse/upload": {
       "post": {
         "tags": [
@@ -151,704 +66,6 @@
   },
   "components": {
     "schemas": {
-      "AutoGenerationConfig": {
-        "type": "object",
-        "properties": {
-          "content_source": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/ContentSource",
-                "description": "Controls which source is used to populate the `content` field"
-              }
-            ],
-            "default": "OCR"
-          },
-          "crop_image": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/CroppingStrategy"
-              }
-            ],
-            "default": "Auto"
-          },
-          "embed_sources": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/EmbedSource"
-            },
-            "default": "[Markdown]"
-          },
-          "extended_context": {
-            "type": "boolean",
-            "description": "Use the full page image as context for LLM generation",
-            "default": false
-          },
-          "html": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/GenerationStrategy"
-              }
-            ],
-            "default": "Auto"
-          },
-          "llm": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "markdown": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/GenerationStrategy"
-              }
-            ],
-            "default": "Auto"
-          }
-        }
-      },
-      "BoundingBox": {
-        "type": "object",
-        "description": "Bounding box for an item. It is used for chunks, segments and OCR results.",
-        "required": [
-          "left",
-          "top",
-          "width",
-          "height"
-        ],
-        "properties": {
-          "height": {
-            "type": "number",
-            "format": "float",
-            "description": "The height of the bounding box."
-          },
-          "left": {
-            "type": "number",
-            "format": "float",
-            "description": "The left coordinate of the bounding box."
-          },
-          "top": {
-            "type": "number",
-            "format": "float",
-            "description": "The top coordinate of the bounding box."
-          },
-          "width": {
-            "type": "number",
-            "format": "float",
-            "description": "The width of the bounding box."
-          }
-        }
-      },
-      "Chunk": {
-        "type": "object",
-        "required": [
-          "chunk_length",
-          "segments"
-        ],
-        "properties": {
-          "chunk_id": {
-            "type": "string",
-            "description": "The unique identifier for the chunk."
-          },
-          "chunk_length": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The total number of tokens in the chunk. Calculated by the `tokenizer`.",
-            "minimum": 0
-          },
-          "embed": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Suggested text to be embedded for the chunk. This text is generated by combining the embed content\nfrom each segment according to the configured embed sources (HTML, Markdown, LLM, or Content).\nCan be configured using `embed_sources` in the `SegmentProcessing` configuration."
-          },
-          "segments": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Segment"
-            },
-            "description": "Collection of document segments that form this chunk.\nWhen `target_chunk_length` > 0, contains the maximum number of segments\nthat fit within that length (segments remain intact).\nOtherwise, contains exactly one segment."
-          }
-        }
-      },
-      "ChunkProcessing": {
-        "type": "object",
-        "description": "Controls the setting for the chunking and post-processing of each chunk.",
-        "properties": {
-          "ignore_headers_and_footers": {
-            "type": "boolean",
-            "description": "Whether to ignore headers and footers in the chunking process.",
-            "default": false
-          },
-          "target_length": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The target number of words in each chunk. If 0, each chunk will contain a single segment.",
-            "default": 512,
-            "minimum": 0
-          },
-          "tokenizer": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/TokenizerType",
-                "description": "The tokenizer to use for the chunking process."
-              }
-            ],
-            "default": "Word"
-          }
-        }
-      },
-      "Configuration": {
-        "type": "object",
-        "required": [
-          "chunk_processing",
-          "high_resolution",
-          "ocr_strategy",
-          "ocr_engine",
-          "segment_processing",
-          "segmentation_strategy",
-          "segment_type_naming",
-          "error_handling",
-          "llm_processing"
-        ],
-        "properties": {
-          "chunk_processing": {
-            "$ref": "#/components/schemas/ChunkProcessing"
-          },
-          "detect_checkboxes": {
-            "type": "boolean",
-            "description": "Whether to detect checkboxes using Swin Transformer Detection API"
-          },
-          "error_handling": {
-            "$ref": "#/components/schemas/ErrorHandlingStrategy"
-          },
-          "expires_in": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "The number of seconds until task is deleted.\nExpired tasks can **not** be updated, polled or accessed via web interface."
-          },
-          "extract_charts": {
-            "type": "boolean"
-          },
-          "extract_colors": {
-            "type": "boolean",
-            "description": "Whether to extract and apply color information from PDF text layer to OCR results.\nWhen enabled, text color (RGB/hex) from the PDF is transferred to matching OCR words.\nDefault: false"
-          },
-          "extract_links": {
-            "type": "boolean",
-            "description": "Whether to extract and apply hyperlink annotations from PDF to OCR results.\nWhen enabled, link URLs from PDF annotations are attached to matching OCR words.\nDefault: false"
-          },
-          "high_resolution": {
-            "type": "boolean",
-            "description": "Whether to use high-resolution images for cropping and post-processing."
-          },
-          "input_file_url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The presigned URL of the input file."
-          },
-          "json_schema": {
-            "deprecated": true
-          },
-          "llm_processing": {
-            "$ref": "#/components/schemas/LlmProcessing"
-          },
-          "merge_tables": {
-            "type": "boolean",
-            "description": "Whether to merge adjacent tables using VLM"
-          },
-          "model": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/Model"
-              }
-            ]
-          },
-          "ocr_engine": {
-            "$ref": "#/components/schemas/OcrEngine"
-          },
-          "ocr_strategy": {
-            "$ref": "#/components/schemas/OcrStrategy"
-          },
-          "output_fields": {
-            "$ref": "#/components/schemas/OutputFieldsConfig",
-            "description": "Configuration for controlling which output fields are included in responses.\nAllows selective inclusion/exclusion of HTML, Markdown, OCR, images, etc."
-          },
-          "page_numbers": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            },
-            "description": "Explicit mapping of array indices to actual page numbers (1-based).\nUsed when parsing selective pages (e.g., [4, 5, 8, 9, 10, 11, 12]).\nPopulated from the page_range parameter."
-          },
-          "page_range": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional page range to process (e.g., \"1-5,8,10-12\"). If None, all pages are processed."
-          },
-          "segment_processing": {
-            "$ref": "#/components/schemas/SegmentProcessing"
-          },
-          "segment_type_naming": {
-            "$ref": "#/components/schemas/SegmentTypeNamingConvention",
-            "description": "Controls the naming convention for segment types in the output"
-          },
-          "segmentation_strategy": {
-            "$ref": "#/components/schemas/SegmentationStrategy"
-          },
-          "target_chunk_length": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "The target number of words in each chunk. If 0, each chunk will contain a single segment.",
-            "deprecated": true,
-            "minimum": 0
-          },
-          "validate_segments": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/SegmentType"
-            }
-          },
-          "xml_citation": {
-            "type": "boolean",
-            "description": "Whether to extract citations using Grobid"
-          }
-        }
-      },
-      "ContentSource": {
-        "type": "string",
-        "description": "Controls which source is used to populate the `content` field in the segment output",
-        "enum": [
-          "OCR",
-          "HTML",
-          "Markdown",
-          "LLM"
-        ]
-      },
-      "CroppingStrategy": {
-        "type": "string",
-        "description": "- `All` crops all images and includes URLs in response\n- `Auto` crops images if needed for LLM processing and includes URLs in response\n- `None` crops images if needed for LLM processing but does NOT include URLs in response",
-        "enum": [
-          "All",
-          "Auto",
-          "None"
-        ]
-      },
-      "EmbedSource": {
-        "type": "string",
-        "enum": [
-          "HTML",
-          "Markdown",
-          "LLM",
-          "Content"
-        ]
-      },
-      "ErrorHandlingStrategy": {
-        "type": "string",
-        "description": "Controls how errors are handled during processing:\n- `Fail`: Stops processing and fails the task when any error occurs\n- `Continue`: Attempts to continue processing despite non-critical errors (eg. LLM refusals etc.)",
-        "enum": [
-          "Fail",
-          "Continue"
-        ]
-      },
-      "FallbackStrategy": {
-        "oneOf": [
-          {
-            "type": "string",
-            "description": "No fallback will be used",
-            "enum": [
-              "None"
-            ]
-          },
-          {
-            "type": "string",
-            "description": "Use the system default fallback model",
-            "enum": [
-              "Default"
-            ]
-          },
-          {
-            "type": "object",
-            "description": "Use a specific model as fallback",
-            "required": [
-              "Model"
-            ],
-            "properties": {
-              "Model": {
-                "type": "string",
-                "description": "Use a specific model as fallback"
-              }
-            }
-          }
-        ],
-        "description": "Specifies the fallback strategy for LLM processing\n\nThis can be:\n1. None - No fallback will be used\n2. Default - The system default fallback model will be used\n3. Model - A specific model ID will be used as fallback (check the documentation for the models.)"
-      },
-      "GenerationStrategy": {
-        "type": "string",
-        "enum": [
-          "LLM",
-          "Auto"
-        ]
-      },
-      "LlmGenerationConfig": {
-        "type": "object",
-        "properties": {
-          "content_source": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/ContentSource",
-                "description": "Controls which source is used to populate the `content` field (default: OCR)"
-              }
-            ],
-            "default": "OCR"
-          },
-          "crop_image": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/CroppingStrategy"
-              }
-            ],
-            "default": "Auto"
-          },
-          "embed_sources": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/EmbedSource"
-            },
-            "default": "[Markdown]"
-          },
-          "extended_context": {
-            "type": "boolean",
-            "description": "Use the full page image as context for LLM generation",
-            "default": false
-          },
-          "html": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/GenerationStrategy"
-              }
-            ],
-            "default": "LLM"
-          },
-          "llm": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Prompt for the LLM model"
-          },
-          "markdown": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/GenerationStrategy"
-              }
-            ],
-            "default": "LLM"
-          },
-          "model_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Model ID for LLM generation"
-          },
-          "use_table_ocr": {
-            "type": "boolean",
-            "description": "Use Surya OCR for table processing to provide structured context to LLM (default: false)",
-            "default": false
-          }
-        }
-      },
-      "LlmProcessing": {
-        "type": "object",
-        "description": "Controls the LLM used for the task.",
-        "properties": {
-          "fallback_strategy": {
-            "$ref": "#/components/schemas/FallbackStrategy",
-            "description": "The fallback strategy to use for the LLMs in the task."
-          },
-          "max_completion_tokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "The maximum number of tokens to generate.",
-            "minimum": 0
-          },
-          "model_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The ID of the model to use for the task. If not provided, the default model will be used.\nPlease check the documentation for the model you want to use."
-          },
-          "temperature": {
-            "type": "number",
-            "format": "float",
-            "description": "The temperature to use for the LLM."
-          }
-        }
-      },
-      "Model": {
-        "type": "string",
-        "enum": [
-          "Fast",
-          "HighQuality"
-        ],
-        "deprecated": true
-      },
-      "OCRResult": {
-        "type": "object",
-        "description": "OCR results for a segment",
-        "required": [
-          "bbox",
-          "text"
-        ],
-        "properties": {
-          "bbox": {
-            "$ref": "#/components/schemas/BoundingBox"
-          },
-          "color": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/TextColor",
-                "description": "Optional text color (RGB) provided by OCR engine"
-              }
-            ]
-          },
-          "confidence": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float",
-            "description": "The confidence score of the recognized text."
-          },
-          "link": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional link URL associated with this OCR result (from PDF annotations)"
-          },
-          "text": {
-            "type": "string",
-            "description": "The recognized text of the OCR result."
-          }
-        }
-      },
-      "OcrEngine": {
-        "type": "string",
-        "description": "Controls which OCR engine to use for text recognition:\n- `UnsiloedStorm`: Uses Google Cloud Vision API (enterprise-grade accuracy, 50+ languages)\n- `UnsiloedHawk`: Uses the Unsiloed/Surya OCR engine (higher accuracy, better for complex layouts)\n- `UnsiloedBeta`: Uses PaddleOCR-VL-1.5 via vLLM (0.9B VLM, irregular bboxes, rotated/warped text) [DEFAULT]",
-        "enum": [
-          "UnsiloedStorm",
-          "UnsiloedHawk",
-          "UnsiloedBeta"
-        ]
-      },
-      "OcrStrategy": {
-        "type": "string",
-        "description": "Controls the Optical Character Recognition (OCR) strategy.\n- `All`: Processes all pages with OCR. (Latency penalty: ~0.5 seconds per page)\n- `Auto`: Selectively applies OCR only to pages with missing or low-quality text. When text layer is present the bounding boxes from the text layer are used.",
-        "enum": [
-          "All",
-          "Auto"
-        ]
-      },
-      "OutputFieldsConfig": {
-        "type": "object",
-        "description": "Configuration for controlling which fields are included in the API response.\nBy default, all fields are included for backward compatibility.\nSet specific fields to false to exclude them from the response.",
-        "properties": {
-          "bbox": {
-            "type": "boolean",
-            "description": "Include bounding box information in segment responses"
-          },
-          "chart_data": {
-            "type": "boolean",
-            "description": "Include extracted chart data for Picture segments identified as charts"
-          },
-          "confidence": {
-            "type": "boolean",
-            "description": "Include confidence scores in segment responses"
-          },
-          "content": {
-            "type": "boolean",
-            "description": "Include text content in segment responses"
-          },
-          "embed": {
-            "type": "boolean",
-            "description": "Include embed text in chunk responses"
-          },
-          "html": {
-            "type": "boolean",
-            "description": "Include HTML representation in segment responses"
-          },
-          "image": {
-            "type": "boolean",
-            "description": "Include images (cropped segment images) in segment responses"
-          },
-          "llm": {
-            "type": "boolean",
-            "description": "Include LLM-generated content in segment responses"
-          },
-          "markdown": {
-            "type": "boolean",
-            "description": "Include Markdown representation in segment responses"
-          },
-          "ocr": {
-            "type": "boolean",
-            "description": "Include OCR results in segment responses"
-          }
-        }
-      },
-      "OutputResponse": {
-        "type": "object",
-        "description": "The processed results of a document analysis task",
-        "required": [
-          "chunks"
-        ],
-        "properties": {
-          "chunks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Chunk"
-            },
-            "description": "Collection of document chunks, where each chunk contains one or more segments"
-          },
-          "extracted_json": {
-            "description": "The extracted JSON from the document.",
-            "deprecated": true
-          },
-          "file_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The name of the file."
-          },
-          "metadata": {
-            "description": "Citation metadata (when xml_citation is enabled)"
-          },
-          "output_file_url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The presigned URL of the output JSON file stored in S3 (when output_file=true)"
-          },
-          "page_count": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "The number of pages in the file.",
-            "minimum": 0
-          },
-          "pdf_url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The presigned URL of the PDF file."
-          }
-        }
-      },
-      "PictureCroppingStrategy": {
-        "type": "string",
-        "description": "Controls the cropping strategy for an item (e.g. segment, chunk, etc.)\n- `All` crops all images and includes URLs in response\n- `Auto` crops images if needed for LLM processing and includes URLs in response\n- `None` crops images if needed for LLM processing but does NOT include URLs in response",
-        "enum": [
-          "All",
-          "Auto",
-          "None"
-        ]
-      },
-      "PictureGenerationConfig": {
-        "type": "object",
-        "properties": {
-          "content_source": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/ContentSource",
-                "description": "Controls which source is used to populate the `content` field (default: OCR)"
-              }
-            ],
-            "default": "OCR"
-          },
-          "crop_image": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/PictureCroppingStrategy"
-              }
-            ],
-            "default": "All"
-          },
-          "embed_sources": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/EmbedSource"
-            },
-            "default": "[Markdown]"
-          },
-          "extended_context": {
-            "type": "boolean",
-            "description": "Use the full page image as context for LLM generation",
-            "default": false
-          },
-          "html": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/GenerationStrategy"
-              }
-            ],
-            "default": "Auto"
-          },
-          "llm": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Prompt for the LLM model"
-          },
-          "markdown": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/GenerationStrategy"
-              }
-            ],
-            "default": "Auto"
-          },
-          "model_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Model ID for LLM generation"
-          }
-        }
-      },
       "PresignedUploadRequest": {
         "type": "object",
         "description": "Request body for POST /v2/parse/upload.\nConfiguration fields mirror the existing /parse multipart form fields.",
@@ -856,90 +73,130 @@
           "file_name"
         ],
         "properties": {
-          "chunk_processing": {},
+          "chunk_processing": {
+            "description": "JSON object for chunk processing configuration."
+          },
           "detect_checkboxes": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Detect checkboxes using Swin Transformer Detection API. Defaults to `false`."
           },
           "error_handling": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Error handling strategy: `Continue` (default) or `Fail`."
           },
           "expires_in": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Seconds until the task and its output are deleted."
           },
           "extract_charts": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Extract structured data from charts and graphs. Defaults to `false`."
           },
           "extract_colors": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Transfer text color from the PDF text layer to OCR results. Defaults to `false`."
           },
           "extract_links": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Attach hyperlink URLs from PDF annotations to OCR results. Defaults to `false`."
           },
           "file_name": {
             "type": "string",
             "description": "File name with extension. Required. Determines content-type."
           },
+          "llm_processing": {
+            "description": "JSON object for LLM processing configuration."
+          },
           "merge_tables": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Merge tables that span multiple pages into a single unified structure. Defaults to `false`."
           },
           "ocr_engine": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "OCR engine: `UnsiloedBeta` (default), `UnsiloedHawk`, or `UnsiloedStorm`."
           },
           "ocr_mode": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "OCR processing mode. `auto_ocr` (default) or `force_ocr`."
+          },
+          "output_fields": {
+            "description": "JSON object controlling which output fields are included in the response."
           },
           "page_range": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Page range to process. Formats: `\"1-5\"`, `\"2,4,6\"`, `\"[1,3,5]\"`. Defaults to all pages."
           },
-          "segment_processing": {},
+          "segment_processing": {
+            "description": "JSON object for segment processing/analysis configuration."
+          },
+          "segment_type_naming": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Segment type naming convention: `Unsiloed` (default) or `Other`."
+          },
           "segmentation_method": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Segmentation strategy: `smart_layout_detection` (default) or `page_by_page`."
           },
           "use_high_resolution": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Use high-resolution images for cropping and post-processing. Defaults to `true`."
+          },
+          "validate_segments": {
+            "description": "JSON array of segment types to validate with VLM. Example: `[\"Table\",\"Formula\"]`."
+          },
+          "validate_table_segments": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Legacy: validate table segments using VLM. Prefer `validate_segments` instead."
           },
           "xml_citation": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Extract and hyperlink bibliography citations in the markdown output. Defaults to `false`."
           }
         }
       },
@@ -981,427 +238,6 @@
             "description": "S3 presigned PUT URL. Valid until expires_at."
           }
         }
-      },
-      "Segment": {
-        "type": "object",
-        "required": [
-          "content",
-          "html",
-          "markdown",
-          "page_height",
-          "page_width",
-          "page_number",
-          "segment_id",
-          "segment_type"
-        ],
-        "properties": {
-          "bbox": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/BoundingBox"
-              }
-            ]
-          },
-          "chart_data": {
-            "description": "Extracted chart data for Picture segments identified as charts.\nContains structured data including chart_type, data series, labels, and legend."
-          },
-          "confidence": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float",
-            "description": "Confidence score of the layout analysis model"
-          },
-          "content": {
-            "type": "string",
-            "description": "Text content of the segment. By default, this contains OCR-extracted text.\nThe source can be configured via the `content_source` field in segment processing configuration\nto use HTML, Markdown, or LLM representation instead."
-          },
-          "html": {
-            "type": "string",
-            "description": "HTML representation of the segment."
-          },
-          "image": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Presigned URL to the image of the segment."
-          },
-          "llm": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "LLM representation of the segment."
-          },
-          "markdown": {
-            "type": "string",
-            "description": "Markdown representation of the segment."
-          },
-          "ocr": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/OCRResult"
-            },
-            "description": "OCR results for the segment."
-          },
-          "page_height": {
-            "type": "number",
-            "format": "float",
-            "description": "Height of the page containing the segment."
-          },
-          "page_number": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Page number of the segment.",
-            "minimum": 0
-          },
-          "page_width": {
-            "type": "number",
-            "format": "float",
-            "description": "Width of the page containing the segment."
-          },
-          "references": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {}
-          },
-          "segment_id": {
-            "type": "string",
-            "description": "Unique identifier for the segment."
-          },
-          "segment_type": {
-            "$ref": "#/components/schemas/SegmentType"
-          },
-          "segment_type_display": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Display name for the segment type (used for serialization based on naming convention)"
-          }
-        }
-      },
-      "SegmentProcessing": {
-        "type": "object",
-        "properties": {
-          "Caption": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AutoGenerationConfig"
-              }
-            ]
-          },
-          "Footnote": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AutoGenerationConfig"
-              }
-            ]
-          },
-          "Formula": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LlmGenerationConfig"
-              }
-            ]
-          },
-          "ListItem": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AutoGenerationConfig"
-              }
-            ]
-          },
-          "Page": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LlmGenerationConfig"
-              }
-            ]
-          },
-          "PageFooter": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AutoGenerationConfig"
-              }
-            ]
-          },
-          "PageHeader": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AutoGenerationConfig"
-              }
-            ]
-          },
-          "Picture": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/PictureGenerationConfig"
-              }
-            ]
-          },
-          "SectionHeader": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AutoGenerationConfig"
-              }
-            ]
-          },
-          "Table": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LlmGenerationConfig"
-              }
-            ]
-          },
-          "Text": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AutoGenerationConfig"
-              }
-            ]
-          },
-          "Title": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AutoGenerationConfig"
-              }
-            ]
-          }
-        }
-      },
-      "SegmentType": {
-        "type": "string",
-        "description": "All the possible types for a segment.\nNote: Different configurations will produce different types.\nPlease refer to the documentation for more information.",
-        "enum": [
-          "Caption",
-          "Footnote",
-          "Formula",
-          "ListItem",
-          "Page",
-          "PageFooter",
-          "PageHeader",
-          "Picture",
-          "SectionHeader",
-          "Table",
-          "Text",
-          "Title"
-        ]
-      },
-      "SegmentTypeNamingConvention": {
-        "type": "string",
-        "description": "Controls the naming convention for segment types in the output:\n- `Unsiloed`: Uses Unsiloed naming convention (e.g., `PageHeader`, `PageFooter`, `SectionHeader`, `ListItem`, `Picture`)\n- `Other`: Uses alternative naming convention (e.g., `Header`, `Footer`, `Section Header`, `List Item`, `Figure`)",
-        "enum": [
-          "Unsiloed",
-          "Other"
-        ]
-      },
-      "SegmentationStrategy": {
-        "type": "string",
-        "description": "Controls the segmentation strategy:\n- `LayoutAnalysis`: Analyzes pages for layout elements (e.g., `Table`, `Picture`, `Formula`, etc.) using bounding boxes. Provides fine-grained segmentation and better chunking. (Latency penalty: ~TBD seconds per page).\n- `Page`: Treats each page as a single segment. Faster processing, but without layout element detection and only simple chunking.",
-        "enum": [
-          "LayoutAnalysis",
-          "Page"
-        ]
-      },
-      "Status": {
-        "type": "string",
-        "description": "The status of the task.",
-        "enum": [
-          "Starting",
-          "AwaitingUpload",
-          "Queued",
-          "Processing",
-          "Succeeded",
-          "Failed",
-          "Cancelled"
-        ]
-      },
-      "TaskResponse": {
-        "type": "object",
-        "required": [
-          "configuration",
-          "created_at",
-          "message",
-          "status",
-          "task_id"
-        ],
-        "properties": {
-          "configuration": {
-            "$ref": "#/components/schemas/Configuration"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "The date and time when the task was created and queued."
-          },
-          "expires_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "The date and time when the task will expire."
-          },
-          "finished_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "The date and time when the task was finished."
-          },
-          "message": {
-            "type": "string",
-            "description": "A message describing the task's status or any errors that occurred."
-          },
-          "output": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/OutputResponse"
-              }
-            ]
-          },
-          "started_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "The date and time when the task was started."
-          },
-          "status": {
-            "$ref": "#/components/schemas/Status"
-          },
-          "task_id": {
-            "type": "string",
-            "description": "The unique identifier for the task."
-          },
-          "task_url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The presigned URL of the task."
-          }
-        }
-      },
-      "TextColor": {
-        "type": "object",
-        "description": "Text color in RGB format",
-        "required": [
-          "r",
-          "g",
-          "b",
-          "hex"
-        ],
-        "properties": {
-          "b": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "g": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "hex": {
-            "type": "string"
-          },
-          "r": {
-            "type": "integer",
-            "format": "int32"
-          }
-        }
-      },
-      "Tokenizer": {
-        "type": "string",
-        "description": "Common tokenizers used for text processing.\n\nThese values represent standard tokenization approaches and popular pre-trained\ntokenizers from the Hugging Face ecosystem.",
-        "enum": [
-          "Word",
-          "Cl100kBase",
-          "XlmRobertaBase",
-          "BertBaseUncased"
-        ]
-      },
-      "TokenizerType": {
-        "oneOf": [
-          {
-            "type": "object",
-            "description": "Use one of the predefined tokenizer types",
-            "required": [
-              "Enum"
-            ],
-            "properties": {
-              "Enum": {
-                "$ref": "#/components/schemas/Tokenizer",
-                "description": "Use one of the predefined tokenizer types"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Use any Hugging Face tokenizer by specifying its model ID\nExamples: \"Qwen/Qwen-tokenizer\", \"facebook/bart-large\"",
-            "required": [
-              "String"
-            ],
-            "properties": {
-              "String": {
-                "type": "string",
-                "description": "Use any Hugging Face tokenizer by specifying its model ID\nExamples: \"Qwen/Qwen-tokenizer\", \"facebook/bart-large\""
-              }
-            }
-          }
-        ],
-        "description": "Specifies which tokenizer to use for the chunking process.\n\nThis type supports two ways of specifying a tokenizer:\n1. Using a predefined tokenizer from the `Tokenizer` enum\n2. Using any Hugging Face tokenizer by providing its model ID as a string\n   (e.g. \"facebook/bart-large\", \"Qwen/Qwen-tokenizer\", etc.)\n\nWhen using a string, any valid Hugging Face tokenizer ID can be specified,\nwhich will be loaded using the Hugging Face tokenizers library."
       }
     },
     "securitySchemes": {
@@ -1415,11 +251,7 @@
   "tags": [
     {
       "name": "Parse v2 (Presigned Upload)",
-      "description": "Direct-to-S3 upload — no server buffering"
-    },
-    {
-      "name": "Task",
-      "description": "Query parse job status (shared with v1)"
+      "description": "Direct upload — no server buffering"
     }
   ]
 }

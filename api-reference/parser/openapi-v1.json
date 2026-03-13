@@ -531,14 +531,7 @@
         "operationId": "health_check",
         "responses": {
           "200": {
-            "description": "Confirmation that the service can respond to requests and the version of the service",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
+            "description": "Service health status with version"
           }
         }
       }
@@ -552,23 +545,49 @@
         "description": "Create a document processing task using Vision-API compatible interface.\nThis endpoint accepts multipart form data with Vision-API parameter names\nand maps them internally to Core Parser format.\n\nSupports both file upload and URL input.",
         "operationId": "create_parse_task",
         "requestBody": {
+          "description": "Multipart form data. Provide either `file` (binary upload) or `url` (presigned/public URL), not both.",
           "content": {
-            "multipart/form-data": {}
-          }
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ParseCreateRequest"
+              }
+            }
+          },
+          "required": true
         },
         "responses": {
           "200": {
-            "description": "Task created successfully",
+            "description": "Job created — poll with GET /parse/{job_id} to retrieve results.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/ParseCreateResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "Bad request - invalid input data",
+            "description": "Bad request — missing file/url, unsupported file type, or invalid parameters.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient quota — not enough page credits remaining.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Usage limit exceeded (billing cap) or rate limit hit (60 req/60 s sliding window). Returns plain text: `Usage limit exceeded` or `Rate limit exceeded`.",
             "content": {
               "text/plain": {
                 "schema": {
@@ -578,7 +597,7 @@
             }
           },
           "500": {
-            "description": "Internal server error",
+            "description": "Internal server error.",
             "content": {
               "text/plain": {
                 "schema": {
@@ -607,7 +626,7 @@
           {
             "name": "job_id",
             "in": "path",
-            "description": "Job ID returned from create parse endpoint",
+            "description": "Job ID returned by `POST /parse`.",
             "required": true,
             "schema": {
               "type": "string"
@@ -616,7 +635,7 @@
           {
             "name": "base64_urls",
             "in": "query",
-            "description": "Whether to return base64 encoded URLs",
+            "description": "Return segment images as base64-encoded data URIs instead of S3 presigned URLs. Defaults to `false`.",
             "required": false,
             "schema": {
               "type": "boolean"
@@ -625,7 +644,7 @@
           {
             "name": "include_chunks",
             "in": "query",
-            "description": "Whether to include chunks in output",
+            "description": "Include the `chunks` array in the response. Defaults to `true`.",
             "required": false,
             "schema": {
               "type": "boolean"
@@ -634,7 +653,7 @@
           {
             "name": "output_file",
             "in": "query",
-            "description": "Whether to return presigned URL to output file",
+            "description": "Return a presigned S3 URL to the raw output JSON file instead of inlining the full response body. Defaults to `false`.",
             "required": false,
             "schema": {
               "type": "boolean"
@@ -643,17 +662,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Task details and results",
+            "description": "Job status and results. Output fields (`chunks`, `total_chunks`, `page_count`, `pdf_url`) are present only when status is `Succeeded`.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TaskResponse"
+                  "$ref": "#/components/schemas/ParseGetResponse"
                 }
               }
             }
           },
           "404": {
-            "description": "Task not found",
+            "description": "Job not found.",
             "content": {
               "text/plain": {
                 "schema": {
@@ -663,7 +682,7 @@
             }
           },
           "500": {
-            "description": "Internal server error",
+            "description": "Internal server error.",
             "content": {
               "text/plain": {
                 "schema": {
@@ -1755,6 +1774,382 @@
               "null"
             ],
             "description": "The presigned URL of the PDF file."
+          }
+        }
+      },
+      "ParseCreateRequest": {
+        "type": "object",
+        "description": "Request body for `POST /parse` (multipart/form-data).\n\nProvide either `file` (binary upload) or `url` (presigned/public URL) — not both.",
+        "required": [
+          "file"
+        ],
+        "properties": {
+          "chunk_processing": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "JSON object for chunk processing configuration."
+          },
+          "detect_checkboxes": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Detect checkboxes using Swin Transformer Detection API. Defaults to `false`.",
+            "default": false
+          },
+          "error_handling": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error handling strategy for non-critical processing errors.\n`Continue` (default) — proceed despite errors (e.g., LLM refusals).\n`Fail` — stop and fail the task on any error.",
+            "default": "Continue"
+          },
+          "expires_in": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Seconds until the task and its output are deleted. Defaults to the plan expiration time."
+          },
+          "extract_charts": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Extract structured data from charts and graphs. Defaults to `false`.",
+            "default": false
+          },
+          "extract_colors": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Transfer text color from the PDF text layer to OCR results. Defaults to `false`.",
+            "default": false
+          },
+          "extract_links": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Attach hyperlink URLs from PDF annotations to OCR results. Defaults to `false`.",
+            "default": false
+          },
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "Document file to process. Required if `url` is not provided.\nSupported formats: PDF, PNG, JPEG, TIFF, PPT, PPTX, DOC, DOCX, XLS, XLSX."
+          },
+          "keep_segment_types": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Filter output to include only the specified segment types (comma-separated).\nExample: `\"table,picture\"`. Use `\"all\"` to include everything. Defaults to `\"all\"`.",
+            "default": "all"
+          },
+          "llm_processing": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "JSON object for LLM processing configuration."
+          },
+          "merge_tables": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Merge tables that span multiple pages into a single unified structure. Defaults to `false`.",
+            "default": false
+          },
+          "ocr_engine": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OCR engine to use for text recognition.\n`UnsiloedBeta` (default) — PaddleOCR-VL-1.5 via vLLM (handles rotated/warped text).\n`UnsiloedHawk` — Surya OCR (higher accuracy, complex layouts).\n`UnsiloedStorm` — Google Cloud Vision API (enterprise accuracy, 50+ languages).",
+            "default": "UnsiloedBeta"
+          },
+          "ocr_mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OCR processing mode.\n`auto_ocr` (default) — applies OCR only where needed.\n`force_ocr` — applies OCR to all content regardless of existing text layer.",
+            "default": "auto_ocr"
+          },
+          "output_fields": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "JSON object controlling which output fields are included in the response.\nExample: `{\"html\": false, \"markdown\": true, \"ocr\": false}`.\nAll fields default to `true`."
+          },
+          "page_range": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Page range to process. Formats: `\"1-5\"`, `\"2,4,6\"`, `\"[1,3,5]\"`. Defaults to all pages."
+          },
+          "segment_analysis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "JSON object controlling HTML/Markdown generation strategy and AI model per segment type.\nExample: `{\"Table\": {\"html\": \"LLM\", \"markdown\": \"LLM\", \"model_id\": \"us_table_v2\"}}`."
+          },
+          "segment_processing": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Alias for `segment_analysis` (Core Parser name). If both are provided, this takes precedence."
+          },
+          "segment_type_naming": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Segment type naming convention.\n`Unsiloed` (default) — e.g., `PageHeader`, `ListItem`, `Picture`.\n`Other` — alternative names e.g., `Header`, `List Item`, `Figure`.",
+            "default": "Unsiloed"
+          },
+          "segmentation_method": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Document segmentation strategy.\n`smart_layout_detection` (default) — detects layout elements (tables, pictures,\nformulas, etc.) using bounding boxes.\n`page_by_page` — treats each page as a single segment; faster for simple documents.",
+            "default": "smart_layout_detection"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Presigned or public URL of the document to fetch and process.\nRequired if `file` is not provided."
+          },
+          "use_high_resolution": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Use high-resolution images for cropping and post-processing.\nLatency penalty: ~2–3 s per page. Defaults to `true`.",
+            "default": true
+          },
+          "validate_segments": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "JSON array string of segment types to validate with VLM.\nExample: `[\"Table\", \"Formula\", \"Picture\"]`. Defaults to `[]`."
+          },
+          "validate_table_segments": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Legacy: validate table segment classifications using VLM.\nPrefer `validate_segments: [\"Table\"]` instead. Defaults to `false`.",
+            "default": false
+          },
+          "xml_citation": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Extract and hyperlink bibliography citations in the markdown output. PDFs only.\nDefaults to `false`.",
+            "default": false
+          }
+        }
+      },
+      "ParseCreateResponse": {
+        "type": "object",
+        "description": "Response body for a successful `POST /parse` call.",
+        "required": [
+          "job_id",
+          "status",
+          "file_name",
+          "created_at",
+          "message",
+          "credit_used",
+          "quota_remaining",
+          "merge_tables"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when the job was created."
+          },
+          "credit_used": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of pages deducted from your quota for this job."
+          },
+          "file_name": {
+            "type": "string",
+            "description": "Name of the uploaded file or `\"unknown\"` when a URL was provided."
+          },
+          "job_id": {
+            "type": "string",
+            "description": "Job identifier — pass this to `GET /parse/{job_id}` to poll for results."
+          },
+          "merge_tables": {
+            "type": "boolean",
+            "description": "Whether table merging is enabled for this job (reflects the submitted `merge_tables` value)."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable status message with a polling hint."
+          },
+          "quota_remaining": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Remaining page quota after this job was deducted."
+          },
+          "status": {
+            "type": "string",
+            "description": "Initial job status. Always `\"Starting\"` on creation."
+          }
+        }
+      },
+      "ParseGetResponse": {
+        "type": "object",
+        "description": "Response body for `GET /parse/{job_id}`.\n\nFields marked as optional appear only when the job has reached the relevant status.",
+        "required": [
+          "job_id",
+          "status",
+          "created_at",
+          "metadata"
+        ],
+        "properties": {
+          "chunks": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Chunk"
+            },
+            "description": "Array of document chunks with segments and extracted content. Present when status is `Succeeded`."
+          },
+          "configuration": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Configuration",
+                "description": "Configuration used for this job (mirrors the parameters submitted at creation time)."
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when the job was created."
+          },
+          "credit_used": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Credits used for this job."
+          },
+          "file_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Original file name from the job record."
+          },
+          "file_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "MIME type of the uploaded file."
+          },
+          "file_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "S3 URL of the original uploaded file."
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 8601 timestamp when processing completed. Present when status is `Succeeded` or `Failed`."
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Internal Supabase job record ID."
+          },
+          "job_id": {
+            "type": "string",
+            "description": "Job identifier."
+          },
+          "merge_tables": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether table merging was enabled for this job."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error or status detail message. Present when status is `Failed`."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Citation or job metadata. Populated when `xml_citation` is enabled or from the job record."
+          },
+          "page_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Number of pages in the document. Present when status is `Succeeded`."
+          },
+          "pdf_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Presigned S3 URL to the generated PDF. Present when status is `Succeeded`."
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 8601 timestamp when processing started. Present when status is not `Starting`."
+          },
+          "status": {
+            "type": "string",
+            "description": "Current job status: `Starting`, `Processing`, `Succeeded`, `Failed`, or `Cancelled`."
+          },
+          "total_chunks": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Total number of document chunks. Present when status is `Succeeded`."
           }
         }
       },

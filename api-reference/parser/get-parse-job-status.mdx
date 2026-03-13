@@ -44,16 +44,16 @@ Parsing jobs are processed asynchronously. Use this endpoint to poll for complet
   ISO 8601 timestamp when the job was created.
 </ResponseField>
 
+<ResponseField name="metadata" type="object">
+  Citation or job metadata. Populated when `xml_citation` is enabled or from the job record.
+</ResponseField>
+
 <ResponseField name="started_at" type="string">
   ISO 8601 timestamp when processing started. Present when status is not `Starting`.
 </ResponseField>
 
 <ResponseField name="finished_at" type="string">
   ISO 8601 timestamp when processing completed. Present when status is `Succeeded` or `Failed`.
-</ResponseField>
-
-<ResponseField name="metadata" type="object">
-  Citation or job metadata. Populated when `xml_citation` is enabled or from the job record.
 </ResponseField>
 
 <ResponseField name="total_chunks" type="integer">
@@ -227,6 +227,18 @@ const result = await getParseJobStatus(jobId, 'your-api-key');
   "file_name": "document.pdf",
   "file_type": "application/pdf",
   "credit_used": 10,
+  "merge_tables": false,
+  "configuration": {
+    "high_resolution": false,
+    "ocr_strategy": "Auto",
+    "ocr_engine": "Default",
+    "segmentation_strategy": "LayoutAnalysis",
+    "segment_type_naming": "Default",
+    "error_handling": "Continue",
+    "chunk_processing": {},
+    "segment_processing": {},
+    "llm_processing": {}
+  },
   "chunks": [
     {
       "chunk_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
@@ -309,6 +321,10 @@ const result = await getParseJobStatus(jobId, 'your-api-key');
   <Accordion title="Failed">
     Job failed during processing. Check the message field for details about what went wrong.
   </Accordion>
+
+  <Accordion title="Cancelled">
+    Job was cancelled before processing completed.
+  </Accordion>
 </AccordionGroup>
 
 ## Polling Strategy
@@ -363,8 +379,8 @@ except Exception as e:
 
 When a job succeeds, the response includes detailed analysis of different document segments:
 
-### Picture
-Images and graphics within the document, including logos, charts, and illustrations.
+### Title
+Top-level document titles, distinct from section headers.
 
 ### SectionHeader
 Document headers and titles that define section boundaries.
@@ -372,11 +388,32 @@ Document headers and titles that define section boundaries.
 ### Text
 Regular text content including paragraphs, sentences, and individual text elements.
 
+### ListItem
+Individual items within ordered or unordered lists.
+
 ### Table
 Tabular data with structured rows and columns.
 
+### Picture
+Images and graphics within the document, including logos, charts, and illustrations.
+
 ### Caption
 Text captions associated with images or figures.
+
+### Formula
+Mathematical or chemical formulas detected within the document.
+
+### Footnote
+Footnote text appearing at the bottom of a page.
+
+### PageHeader
+Recurring header content appearing at the top of pages.
+
+### PageFooter
+Recurring footer content appearing at the bottom of pages.
+
+### Page
+A full-page segment when the document is processed without fine-grained layout analysis.
 
 Each segment includes:
 - **segment_type**: Type of content detected
@@ -393,10 +430,10 @@ Each segment includes:
 
 ### Common Error Scenarios
 
-1. **Job Not Found**: Invalid or expired job ID
-2. **Invalid API Key**: Authentication failed
-3. **Processing Timeout**: Job took too long to complete
-4. **Server Error**: Internal processing error
+1. **Job Not Found**: Invalid or expired job ID returns a `404` response.
+2. **Invalid API Key**: Authentication failed.
+3. **Client-Side Polling Timeout**: The job did not complete within the time your polling logic allows. This is not a server-returned error; implement a reasonable client-side timeout and handle it gracefully.
+4. **Server Error**: Internal processing error returns a `500` response.
 
 ### Best Practices
 

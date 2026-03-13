@@ -83,6 +83,12 @@ console = Console()
     help="Route requests via Amazon Bedrock using the current AWS credentials.",
 )
 @click.option(
+    "--vertex",
+    is_flag=True,
+    default=False,
+    help="Route requests via Google Cloud Vertex AI (uses GOOGLE_APPLICATION_CREDENTIALS).",
+)
+@click.option(
     "--no-diff",
     is_flag=True,
     default=False,
@@ -133,6 +139,7 @@ def main(
     dry_run: bool,
     model: str | None,
     bedrock: bool,
+    vertex: bool,
     no_diff: bool,
     run_judge: bool,
     revise: bool,
@@ -140,13 +147,26 @@ def main(
     judge_model: str | None,
     fail_on_issues: bool,
 ) -> None:
-    from doc_sync.enrichment.enrich import _BEDROCK_DEFAULT_MODEL
-    from doc_sync.judge.judge import _DEFAULT_JUDGE_MODEL, _BEDROCK_JUDGE_MODEL
+    from doc_sync import config
+
+    if bedrock and vertex:
+        console.print("[red]Cannot use both --bedrock and --vertex.[/red]")
+        raise SystemExit(1)
 
     if model is None:
-        model = _BEDROCK_DEFAULT_MODEL if bedrock else "claude-sonnet-4-6"
+        if vertex:
+            model = config.VERTEX_MODEL
+        elif bedrock:
+            model = config.BEDROCK_MODEL
+        else:
+            model = "claude-sonnet-4-6"
     if judge_model is None:
-        judge_model = _BEDROCK_JUDGE_MODEL if bedrock else _DEFAULT_JUDGE_MODEL
+        if vertex:
+            judge_model = config.VERTEX_JUDGE_MODEL
+        elif bedrock:
+            judge_model = config.BEDROCK_JUDGE_MODEL
+        else:
+            judge_model = "claude-opus-4-6"
 
     spec_path = Path(spec).resolve()
     docs_path = Path(docs_root).resolve()
@@ -239,6 +259,7 @@ def main(
                 schemas=schemas,
                 model=model,
                 bedrock=bedrock,
+                vertex=vertex,
             )
         except Exception as e:
             console.print(f"    [red]✗ Claude call failed: {e}[/red]")
@@ -282,6 +303,7 @@ def main(
                     source_context=source_context,
                     model=judge_model,
                     bedrock=bedrock,
+                    vertex=vertex,
                 )
             except Exception as e:
                 console.print(f"    [red]✗ Judge call failed: {e}[/red]")
@@ -310,6 +332,7 @@ def main(
                         issues=jr.issues,
                         model=model,
                         bedrock=bedrock,
+                        vertex=vertex,
                     )
                     result.updated = revised
                     console.print("    [green]✓[/green] Revision complete")
@@ -323,6 +346,7 @@ def main(
                         source_context=source_context,
                         model=judge_model,
                         bedrock=bedrock,
+                        vertex=vertex,
                     )
                     result.judge_result = jr2
                     if jr2.passed:
